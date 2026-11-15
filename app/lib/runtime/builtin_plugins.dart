@@ -156,6 +156,8 @@ class BuiltinPlugins {
         await _register(entity.path, plugin, steps);
         if (!seeded.contains(plugin)) seeded.add(plugin);
       }
+      // 插件登记完之后，把默认模型指向插件的通道。
+      await _seedDefaultModel(entity.path, steps);
     }
     lastProfiles = names;
     if (names.isEmpty) {
@@ -166,6 +168,139 @@ class BuiltinPlugins {
       lastResult = '已写入 ${seeded.join(',')} → ${names.join(',')}；重启本机引擎后生效';
     }
   }
+
+  /// 把 profile 设置层（`cordis.patch.yml`）的默认模型指向内置插件。
+  ///
+  /// ## 为什么必须做
+  ///
+  /// 引擎自带的 `dsh-agent-default-model` 出厂值是 `deepseek-official` +
+  /// `deepseek-flash`，即 DeepSeek 官方账号通道。装上 `dsh-our-free-model`
+  /// 之后它并不会自动改用插件——插件只是注册了一个叫 `our-free-model` 的
+  /// 适配器，得有人把默认指向它。
+  ///
+  /// 不指过去的表现：每一轮都报「还没有 DeepSeek API Key」（那条提示其实
+  /// 是兜底文案，真实错误可能是任意 provider 的 MISSING_CREDENTIAL）。
+  ///
+  /// ## 为什么连 rememberLastSelection 一起关
+  ///
+  /// 引擎的 `initializeDefaultModel()` 在启动时会把默认模型改写成官方账号
+  /// 通道的第一个模型，无视这里的配置。它开头有一句
+  /// `if (!remembersLastSelection()) return;`——把 `rememberLastSelection`
+  /// 设成 `false` 就能让它跳过改写，这里配的 provider/model 才站得住。
+  ///
+  /// 这个改写是纯文本、逐行、只认预期形态：任何一行不像预期就整段跳过并
+  /// 记日志，绝不猜。
+  static const String _pluginProvider = 'our-free-model';
+  static const String _pluginModel = 'deepseek-v4.1-flash-free';
+
+  static Future<void> _seedDefaultModel(String profile, List<String> steps) async {
+    if (!bundled.contains('dsh-our-free-model')) return;
+
+    final file = File('$profile/cordis.patch.yml');
+    final name = profile.split('/').last;
+
+    if (!file.existsSync()) {
+      // 引擎还没写出设置层。整块新建是合法的：它是一个补丁数组，
+      // 只覆盖我们关心的那几个字段，其余继承 bundle 层。
+      try {
+        file.parent.createSync(recursive: true);
+        file.writeAsStringSync(_defaultModelBlock, flush: true);
+        steps.add('新建 $name/cordis.patch.yml（默认模型 → $_pluginProvider）');
+      } catch (error) {
+        steps.add('新建 cordis.patch.yml 失败: $error');
+      }
+      return;
+    }
+
+    List<String> lines;
+    try {
+      lines = await file.readAsLines();
+    } catch (error) {
+      steps.add('读 $name/cordis.patch.yml 失败: $error');
+      return;
+    }
+
+    if (lines.any((l) => l.contains(_pluginProvider))) {
+      steps.add('$name 默认模型已是 $_pluginProvider');
+      return;
+    }
+
+    // 找 `- id: agent-default-model` 这一条。
+    final start = lines.indexWhere(
+      (l) => l.trimRight() == '- id: agent-default-model',
+    );
+    if (start < 0) {
+      // 没有这一条：追加一整块，交给补丁层去覆盖 bundle 的出厂值。
+      try {
+        final text = '${lines.join('\n')}\n$_defaultModelBlock';
+        file.writeAsStringSync(text, flush: true);
+        steps.add('$name 追加默认模型条目 → $_pluginProvider');
+      } catch (error) {
+        steps.add('追加 cordis.patch.yml 失败: $error');
+      }
+      return;
+    }
+
+    // 找到这一条的花括号范围：从 start 到下一个顶格 `- ` 之前。
+    var end = lines.length;
+    for (var i = start + 1; i < lines.length; i++) {
+      if (lines[i].startsWith('- ')) {
+        end = i;
+        break;
+      }
+    }
+
+    var providerLine = -1;
+    var modelLine = -1;
+    var rememberLine = -1;
+    for (var i = start; i < end; i++) {
+      final t = lines[i].trim();
+      if (t.startsWith('provider:')) providerLine = i;
+      if (t.startsWith('model:')) modelLine = i;
+      if (t.startsWith('rememberLastSelection:')) rememberLine = i;
+    }
+    if (providerLine < 0 || modelLine < 0) {
+      // 形态不符（比如是 insert 列表），不猜，留给人工。
+      steps.add('$name 的 agent-default-model 结构不符预期，跳过');
+      return;
+    }
+
+    final updated = List<String>.from(lines);
+    // 保留原来的缩进。
+    String indentOf(int i) {
+      final m = RegExp(r'^(\s*)').firstMatch(updated[i]);
+      return m?.group(1) ?? '    ';
+    }
+
+    final pIndent = indentOf(providerLine);
+    final mIndent = indentOf(modelLine);
+    updated[providerLine] = '$pIndent' + 'provider: $_pluginProvider';
+    updated[modelLine] = '$mIndent' + 'model: $_pluginModel';
+
+    if (rememberLine >= 0) {
+      updated[rememberLine] =
+          '${indentOf(rememberLine)}rememberLastSelection: false';
+    } else {
+      // 没有就补在 model 后面。
+      updated.insert(modelLine + 1, '$mIndent' + 'rememberLastSelection: false');
+    }
+
+    try {
+      await file.writeAsString('${updated.join('\n')}\n', flush: true);
+      steps.add('$name 默认模型 → $_pluginProvider/$_pluginModel，并关闭记忆选择');
+    } catch (error) {
+      steps.add('写 cordis.patch.yml 失败: $error');
+    }
+  }
+
+  static const String _defaultModelBlock = '''
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: our-free-model
+    model: deepseek-v4.1-flash-free
+    rememberLastSelection: false
+''';
 
   static Future<void> _copy(Directory source, Directory target) async {
     target.createSync(recursive: true);
