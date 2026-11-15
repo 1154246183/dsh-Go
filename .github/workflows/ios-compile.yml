@@ -50,8 +50,29 @@ jobs:
         run: |
           echo "runner: ${{ inputs.runner || 'macos-26' }}"
           ls -d /Applications/Xcode*.app 2>/dev/null || echo "(no Xcode in /Applications)"
-          # 优先 Xcode 26；否则取版本号最大的一个。
-          pick="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          # 钉住 Xcode 版本，不要取「最新的那个」。
+          #
+          # macos-26 镜像在滚动升级：d38dfd6d 成功时是 Xcode 26.3，两小时后
+          # 1a142a35 换成 26.6.0 就构建失败——Flutter 3.47.7 在 26.6 上即使传了
+          # --no-codesign 仍然要求 Development Team，报错还把真正原因挡住，
+          # 只说「requires a selected Development Team with a Provisioning Profile」。
+          #
+          # 优先 26.3；没有就取 <= 26.3 的最大版本；再没有才退回最新。
+          pick="/Applications/Xcode_26.3.app"
+          if [ ! -d "$pick" ]; then
+            pick=""
+            for candidate in $(ls -d /Applications/Xcode_26.*.app 2>/dev/null | sort -V); do
+              version="$(basename "$candidate" | sed -e 's/^Xcode_//' -e 's/\.app$//')"
+              # 只接受主版本 26、次版本 <= 3 的。
+              case "$version" in
+                26.0|26.1|26.2|26.3) pick="$candidate" ;;
+              esac
+            done
+          fi
+          if [ -z "$pick" ]; then
+            echo '::warning title=xcode::Xcode 26.3 不可用，退回最新版本'
+            pick="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          fi
           if [ -z "$pick" ]; then
             pick="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
           fi
