@@ -12,6 +12,22 @@ if ! bash "$ROOT/tooling/ios/build-phone-self-runner.sh"; then
   exit 1
 fi
 
+# 彻底关掉代码签名，不要只依赖 `flutter build ios --no-codesign`。
+#
+# `--no-codesign` 只是让 Flutter 跳过**产物**签名；工程里
+# `CODE_SIGN_STYLE = Automatic` 仍然会让它去找 Development Team。找到不到时
+# Flutter 抛的是 code_signing.dart 里的**兜底文案**
+# （“Building a deployable iOS app requires a selected Development Team…”），
+# 真实原因被完全遮住。这个仓库本来就用 ldid 在 CI 后面手动签名，
+# 所以让 xcodebuild 根本不签名是正确做法，不是绕过。
+#
+# `FLUTTER_XCODE_<SETTING>` 会被 Flutter 原样变成同名 xcodebuild 构建设置。
+export FLUTTER_XCODE_CODE_SIGNING_ALLOWED=NO
+export FLUTTER_XCODE_CODE_SIGNING_REQUIRED=NO
+export FLUTTER_XCODE_CODE_SIGN_IDENTITY=""
+export FLUTTER_XCODE_EXPANDED_CODE_SIGN_IDENTITY=""
+export FLUTTER_XCODE_PROVISIONING_PROFILE_SPECIFIER=""
+
 log="$(mktemp)"
 flutter build ios "$@" 2>&1 | tee "$log"
 status=${PIPESTATUS[0]}
@@ -27,6 +43,14 @@ if [ "$status" -ne 0 ]; then
   # “requires a selected Development Team”。把尾部原样打出来，否则无从判断。
   echo "::group::flutter build ios 输出（末尾 400 行）"
   tail -400 "$log" | sed -e 's/%/%25/g'
+  echo "::endgroup::"
+  # 真正生效的签名设置。上面那些 FLUTTER_XCODE_* 有没有传进去，看这里。
+  echo "::group::xcodebuild 生效的签名设置"
+  "$DEVELOPER_DIR/usr/bin/xcodebuild" \
+    -workspace ios/Runner.xcworkspace -scheme Runner \
+    -configuration Release -sdk iphoneos -showBuildSettings 2>&1 |
+    grep -E 'CODE_SIGN|DEVELOPMENT_TEAM|PROVISIONING_PROFILE|SDKROOT|IPHONEOS_DEPLOYMENT_TARGET' |
+    head -40
   echo "::endgroup::"
 fi
 exit "$status"
