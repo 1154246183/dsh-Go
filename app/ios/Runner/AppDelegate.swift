@@ -9,6 +9,33 @@ import UserNotifications
   /// 输入框「粘贴图片」读剪贴板用；持有引用，别让它被回收。
   private var pasteboardImage: PasteboardImageChannel?
 
+  // MARK: - 防息屏
+  //
+  // 任务跑在手机端引擎里时，屏幕一旦自动熄灭，系统会把 App 推到后台并挂起，
+  // 正在执行的会话就被打断。所以 App 在前台期间保持常亮，退回后台时立刻
+  // 恢复系统默认行为（否则会白白耗电）。
+  //
+  // `isIdleTimerDisabled` 只能在主线程由原生层设置，因此放在这里而不是 Dart。
+
+  /// 用户是否允许常亮；设置页可以通过通道关掉（默认开）。
+  private var keepAwakeAllowed = true
+
+  private func applyKeepAwake(_ active: Bool) {
+    let wanted = active && keepAwakeAllowed
+    guard UIApplication.shared.isIdleTimerDisabled != wanted else { return }
+    UIApplication.shared.isIdleTimerDisabled = wanted
+  }
+
+  override func applicationDidBecomeActive(_ application: UIApplication) {
+    super.applicationDidBecomeActive(application)
+    applyKeepAwake(true)
+  }
+
+  override func applicationWillResignActive(_ application: UIApplication) {
+    super.applicationWillResignActive(application)
+    applyKeepAwake(false)
+  }
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
