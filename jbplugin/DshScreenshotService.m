@@ -1,22 +1,31 @@
 //
-// DshScreenshotService.dylib
+// DshScreenshotService.m
 //
-// 注入 SpringBoard 进程，监听本机回环端口，按请求截一张整屏返回 PNG。
+// 注入 SpringBoard，监听本机回环端口，按请求截一张整屏返回 PNG。
 //
-// 为什么需要它：App 在自己的沙盒进程里，`_UICreateScreenUIImage` 只能拿到本
-// 进程的图层，截别的 App 就是一张纯黑。只有住在 SpringBoard 里的代码才看得见
+// 为什么需要它：App 在自己的沙盒进程里，`UIGetScreenImage` 只能拿到本进程
+// 的图层，截别的 App 就是一张纯黑。只有住在 SpringBoard 里的代码才看得见
 // 整个屏幕——Snapper 3 能截图正是这个原因。
 //
+// 为什么全部走 dlopen + dlsym（这一条是关键）：
+//
+//   链接期一碰 UIKit / CoreGraphics，arm64e 上的 dylib 就会生成需要指针
+//   认证（PAC）的 chained fixup。未正确签名时 SpringBoard 在 libobjc 加载
+//   阶段直接崩，崩因写着 "possible pointer authentication failure"，手机
+//   进安全模式。实测 DshScreenshotService 之前正是这么崩的。
+//
+//   只链 Foundation 的探针（DshProbe）能稳定注入。所以这里链接期只留
+//   Foundation，UIKit 和 CoreGraphics 的符号全部运行时解析。
+//
 // 只做一件事：把屏幕像素交出去。不做点按、不做输入、不读剪贴板、不联网。
-// 只监听 127.0.0.1，并且要求请求里带上 App 与插件约定的密钥，
-// 避免同机其它程序随意调用。
+// 只监听 127.0.0.1，并且要求请求里带上约定密钥。
 //
 
 #import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
-#import <objc/runtime.h>
+#include <objc/message.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -26,47 +35,105 @@
 static const int kDshScreenPort = 47191;
 static NSString *const kDshSharedKey = @"dsh-go-screen-v1";
 
+#pragma mark - 运行时符号
+
+typedef struct {
+  void *uikit;
+  void *coregraphics;
+  // CoreGraphics C 函数
+  size_t (*imageGetWidth)(void *);
+  void (*imageRelease)(void *);
+  void (*imageRetain)(void *);
+  // UIKit C 函数
+  void *(*screenImage)(void);              // UIGetScreenImage -> CGImageRef
+  void *(*uiCreateScreenImage)(void);      // _UICreateScreenUIImage -> UIImage*
+  void *(*pngRepresentation)(void *);      // UIImagePNGRepresentation -> NSData*
+  // ObjC
+  Class imageClass;                        // UIImage
+  SEL imageWithCGImage;                    // +imageWithCGImage:
+  BOOL ready;
+} DshScreenSymbols;
+
+static DshScreenSymbols gSymbols;
+
+static void *DshLookup(void *handle, const char *name) {
+  if (!handle || !name) return NULL;
+  return dlsym(handle, name);
+}
+
+/// 懒加载：注入的那一刻 SpringBoard 可能还没把 UIKit 初始化完，所以每个
+/// 请求进来时才解析一次。解析失败返回 NO，调用方据此回 503。
+static BOOL DshLoadSymbols(void) {
+  if (gSymbols.ready) return YES;
+
+  if (!gSymbols.uikit) {
+    gSymbols.uikit = dlopen("/System/Library/Frameworks/UIKit.framework/UIKit", RTLD_NOW | RTLD_LOCAL);
+  }
+  if (!gSymbols.coregraphics) {
+    gSymbols.coregraphics = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
+                                   RTLD_NOW | RTLD_LOCAL);
+  }
+  if (!gSymbols.uikit) return NO;
+
+  // CoreGraphics 的函数在 UIKit 里也能找到（UIKit 重导出 CG）。
+  void *cg = gSymbols.coregraphics ? gSymbols.coregraphics : gSymbols.uikit;
+  gSymbols.imageGetWidth = (size_t (*)(void *))DshLookup(cg, "CGImageGetWidth");
+  gSymbols.imageRelease = (void (*)(void *))DshLookup(cg, "CGImageRelease");
+  gSymbols.imageRetain = (void *(*)(void *))DshLookup(cg, "CGImageRetain");
+
+  // UIKit 的整屏接口。UIGetScreenImage 是私有函数，_UICreateScreenUIImage 是
+  // 更新一些的替代品，两者都试。
+  gSymbols.screenImage = (void *(*)(void))DshLookup(gSymbols.uikit, "UIGetScreenImage");
+  if (!gSymbols.screenImage) {
+    gSymbols.screenImage = (void *(*)(void))DshLookup(NULL, "UIGetScreenImage");
+  }
+  gSymbols.uiCreateScreenImage = (void *(*)(void))DshLookup(gSymbols.uikit, "_UICreateScreenUIImage");
+
+  gSymbols.pngRepresentation = (void *(*)(void *))DshLookup(gSymbols.uikit, "UIImagePNGRepresentation");
+
+  gSymbols.imageClass = NSClassFromString(@"UIImage");
+  gSymbols.imageWithCGImage = NSSelectorFromString(@"imageWithCGImage:");
+
+  gSymbols.ready = (gSymbols.screenImage || gSymbols.uiCreateScreenImage) &&
+                   gSymbols.pngRepresentation && gSymbols.imageClass != Nil;
+  return gSymbols.ready;
+}
+
 #pragma mark - 抓屏
 
-static CGImageRef DshCaptureFullScreen(void) {
-  // 优先用 UIKit 的整屏接口：在 SpringBoard 里它拿到的就是当前显示的一切。
-  typedef CGImageRef (*GetScreenFn)(void);
-  GetScreenFn getScreen = (GetScreenFn)dlsym(RTLD_DEFAULT, "UIGetScreenImage");
-  if (getScreen) {
-    CGImageRef image = getScreen();
-    if (image && CGImageGetWidth(image) > 0) return image;
-    if (image) CGImageRelease(image);
-  }
-  // 退一步：私有类方法。
-  Class screenClass = NSClassFromString(@"UIScreen");
-  if ([screenClass respondsToSelector:NSSelectorFromString(@"mainScreen")]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-    id screen = [screenClass performSelector:NSSelectorFromString(@"mainScreen")];
-    if ([screen respondsToSelector:NSSelectorFromString(@"_snapshotView")]) {
-      UIView *view = [screen performSelector:NSSelectorFromString(@"_snapshotView")];
-#pragma clang diagnostic pop
-      if ([view isKindOfClass:[UIView class]] && view.bounds.size.width > 0) {
-        UIGraphicsImageRenderer *renderer =
-            [[UIGraphicsImageRenderer alloc] initWithBounds:view.bounds];
-        UIImage *rendered = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
-          [view drawViewHierarchyInRect:view.bounds afterScreenUpdates:NO];
-        }];
-        return CGImageRetain(rendered.CGImage);
+/// 拿一张整屏 PNG。在 SpringBoard 里 UIGetScreenImage 得到的就是当前显示的一切。
+static NSData *DshCapturePNG(void) {
+  if (!DshLoadSymbols()) return nil;
+
+  // 路线一：UIGetScreenImage → CGImageRef → UIImage → PNG
+  if (gSymbols.screenImage) {
+    void *cgImage = gSymbols.screenImage();
+    if (cgImage) {
+      if (gSymbols.imageGetWidth && gSymbols.imageGetWidth(cgImage) > 0) {
+        id image = ((id (*)(id, SEL, void *))objc_msgSend)(
+            (id)gSymbols.imageClass, gSymbols.imageWithCGImage, cgImage);
+        NSData *png = image ? gSymbols.pngRepresentation(image) : nil;
+        if (gSymbols.imageRelease) gSymbols.imageRelease(cgImage);
+        if (png.length > 0) return png;
+      } else if (gSymbols.imageRelease) {
+        gSymbols.imageRelease(cgImage);
       }
     }
   }
-  return NULL;
+
+  // 路线二：_UICreateScreenUIImage 直接给 UIImage
+  if (gSymbols.uiCreateScreenImage) {
+    id image = ((id (*)(void))gSymbols.uiCreateScreenImage)();
+    if (image) {
+      NSData *png = gSymbols.pngRepresentation(image);
+      if (png.length > 0) return png;
+    }
+  }
+
+  return nil;
 }
 
 #pragma mark - HTTP
-
-static NSData *DshPngFromCGImage(CGImageRef image) {
-  if (!image) return nil;
-  UIImage *wrapped = [UIImage imageWithCGImage:image];
-  NSData *png = UIImagePNGRepresentation(wrapped);
-  return png;
-}
 
 static void DshWriteAll(int fd, const void *bytes, size_t length) {
   const uint8_t *p = (const uint8_t *)bytes;
@@ -86,6 +153,7 @@ static void DshRespond(int fd, int status, const char *reason,
       "HTTP/1.1 %d %s\r\n"
       "Content-Type: %s\r\n"
       "Content-Length: %zu\r\n"
+      "Cache-Control: no-store\r\n"
       "Connection: close\r\n"
       "\r\n",
       status, reason, contentType, bodyLength);
@@ -99,10 +167,9 @@ static void DshHandleClient(int fd) {
   if (got <= 0) { close(fd); return; }
   request[got] = '\0';
 
-  // 只接受带正确密钥的 GET /capture。
   NSString *raw = [NSString stringWithUTF8String:request];
-  BOOL authorized = [raw containsString:kDshSharedKey];
-  BOOL wantsCapture = [raw hasPrefix:@"GET /capture"] || [raw containsString:@"GET /capture"];
+  BOOL authorized = raw && [raw containsString:kDshSharedKey];
+  BOOL wantsCapture = raw && [raw rangeOfString:@"GET /capture"].location != NSNotFound;
 
   if (!authorized) {
     DshRespond(fd, 403, "Forbidden", "denied", 6, "text/plain");
@@ -116,10 +183,7 @@ static void DshHandleClient(int fd) {
     return;
   }
 
-  CGImageRef image = DshCaptureFullScreen();
-  NSData *png = DshPngFromCGImage(image);
-  if (image) CGImageRelease(image);
-
+  NSData *png = DshCapturePNG();
   if (!png || png.length == 0) {
     DshRespond(fd, 503, "Unavailable", "nocapture", 9, "text/plain");
   } else {
@@ -193,8 +257,6 @@ static void DshScreenshotServiceInit(void) {
   @autoreleasepool {
     // 构造函数一进来就落一行日志。这是判断「插件到底有没有被注入」的唯一
     // 可靠手段：端口不通可能是 bind 失败、也可能是根本没被加载，两者要分开。
-    NSMutableString *step = [NSMutableString string];
-    [step appendString:@"constructor entered\n"];
     NSString *logPath = @"/var/mobile/dsh-screen-plugin.log";
     void (^log)(NSString *) = ^(NSString *line) {
       NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:logPath];
@@ -206,8 +268,9 @@ static void DshScreenshotServiceInit(void) {
         [handle closeFile];
       }
     };
-    log([step copy]);
+    log([NSString stringWithFormat:@"constructor entered uid=%d pid=%d\n", getuid(), getpid()]);
 
+    // SpringBoard 启动期还没把窗口树搭好，等几秒再开监听。
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
       [[DshScreenshotService shared] startWithLog:log];
