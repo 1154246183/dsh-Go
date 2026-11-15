@@ -55,6 +55,16 @@ class _NoticeRowState extends State<NoticeRow> {
 
   static final _retryCount = RegExp(r'\((\d+)(?:/(\d+))?\)');
 
+  /// 引擎的 `LlmError` 把通道名写成消息前缀：`trae: no usable credential`。
+  ///
+  /// 只有这种形态才认；不匹配就把消息当成 DeepSeek 官方通道自己的错误，
+  /// 因为那条路径不带前缀。
+  static final _providerPrefix = RegExp(r'^([a-z][a-z0-9-]{1,29}):\s');
+
+  /// 从错误消息里取提供方名；取不到返回 null。
+  static String? _providerOf(String message) =>
+      _providerPrefix.firstMatch(message)?.group(1);
+
   (IconData, String) _content(Subscription? lapsed) {
     final failure = item.failure;
     switch (item.kind) {
@@ -63,11 +73,20 @@ class _NoticeRowState extends State<NoticeRow> {
           return (AppIcons.noApiKey, appL10n.chatSubscriptionExpired(subscriptionLabel(lapsed)));
         }
         if (failure?.code == 'MISSING_CREDENTIAL') {
-          // pi-ai routes are the 模型渠道; the bare one is DeepSeek's key.
-          if (failure!.message.startsWith('llm-pi-ai')) {
+          // 带前缀 = 某个模型渠道（trae / cline / lobserai …）没有可用凭证；
+          // 不带前缀 = App 里自己填的 DeepSeek API Key 没配。
+          //
+          // 早先这里只判断 `startsWith('llm-pi-ai')`，其余一律显示
+          // 「还没有 DeepSeek API Key」。于是 `trae: no usable credential`
+          // 也被说成 DeepSeek 缺 Key，把排查方向带偏了整轮。
+          final provider = _providerOf(failure!.message);
+          if (provider == null) {
+            return (AppIcons.noApiKey, appL10n.chatDeepSeekKeyMissing);
+          }
+          if (provider.startsWith('llm-')) {
             return (AppIcons.noApiKey, appL10n.chatProviderKeyMissing);
           }
-          return (AppIcons.noApiKey, appL10n.chatDeepSeekKeyMissing);
+          return (AppIcons.noApiKey, appL10n.chatProviderCredentialMissing(provider));
         }
         return (AppIcons.error, turnFailureText(failure?.code));
       case 'aborted':
@@ -105,11 +124,13 @@ class _NoticeRowState extends State<NoticeRow> {
     if (lapsed != null) {
       action = (label: l10n.chatSignInAgain, onPressed: () => showSubscriptionLogin(context, lapsed));
     } else if (isError && item.failure?.code == 'MISSING_CREDENTIAL') {
-      final pi = item.failure!.message.startsWith('llm-pi-ai');
+      // 有前缀说明是某个模型渠道的凭证问题，去处是「模型渠道」页；
+      // 没有前缀才是 App 里自己填的 DeepSeek API Key，去处是填 key 的页面。
+      final toProviders = _providerOf(item.failure!.message) != null;
       action = (
         label: l10n.chatGoToSettings,
         onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => pi ? const ProvidersPage() : const ApiKeyPage(onboarding: false)),
+          MaterialPageRoute<void>(builder: (_) => toProviders ? const ProvidersPage() : const ApiKeyPage(onboarding: false)),
         ),
       );
     } else {
