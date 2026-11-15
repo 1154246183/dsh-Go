@@ -557,6 +557,14 @@
   },
   "chatProviderKeyMissing": "这个模型渠道还没有密钥",
   "chatDeepSeekKeyMissing": "还没有 DeepSeek API Key",
+  "chatProviderCredentialMissing": "{provider} 渠道没有可用凭证，需要重新登录",
+  "@chatProviderCredentialMissing": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
   "chatOutputLimitReached": "已达单次输出上限",
   "chatTurnBlocked": "本轮已被拦截",
   "chatTurnEngineRestarted": "引擎重启过，本轮已中断",
