@@ -11,6 +11,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
+import '../../state/model_health.dart';
 import '../../state/models_state.dart';
 import '../../state/settings_state.dart';
 import '../common/app_sheet.dart';
@@ -608,6 +609,7 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
                 models: shown.models,
                 selected: selected,
                 onPick: readOnly ? null : _pickModel,
+                health: ref.watch(modelHealthProvider).valueOrNull ?? const {},
               ),
             ),
           ),
@@ -787,11 +789,20 @@ class _ChannelChip extends StatelessWidget {
 
 /// 两列等宽的模型卡,同一行等高、间距 12;单数时最后一张占满整行。
 class _ModelGrid extends StatelessWidget {
-  const _ModelGrid({super.key, required this.models, required this.selected, required this.onPick});
+  const _ModelGrid({
+    super.key,
+    required this.models,
+    required this.selected,
+    required this.onPick,
+    this.health = const {},
+  });
 
   final List<ModelInfo> models;
   final ModelInfo? selected;
   final ValueChanged<ModelInfo>? onPick;
+
+  /// 模型 id → 实测情况。空表示还没有任何调用记录，卡片不画状态。
+  final Map<String, ModelHealth> health;
 
   static const gap = 12.0;
 
@@ -802,6 +813,7 @@ class _ModelGrid extends StatelessWidget {
       model: model,
       selected: selected?.id == model.id && selected?.provider == model.provider,
       onTap: onPick == null ? null : () => onPick!(model),
+      health: healthFor(health, model.id),
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -830,12 +842,26 @@ class _ModelGrid extends StatelessWidget {
 
 /// 一张模型卡:短名(最多两行)+ 一行描述,右上角选择圈。选中时卡面染一层
 /// 很淡的主色、描一圈主色细边、圈里是实心对勾 —— 这一屏唯一的实心主色。
+///
+/// 有实测数据时还会叠加一层状态色（选中优先）：
+///   跑通且没失败 → 绿底绿边 + 一行首字节延迟（`812ms`）
+///   试过但没成功 → 红底红边 + 「不可用」
+/// 没有调用记录的模型保持原样 —— 「没测过」不等于「不可用」。
 class _ModelCard extends StatelessWidget {
-  const _ModelCard({super.key, required this.model, required this.selected, required this.onTap});
+  const _ModelCard({
+    super.key,
+    required this.model,
+    required this.selected,
+    required this.onTap,
+    this.health,
+  });
 
   final ModelInfo model;
   final bool selected;
   final VoidCallback? onTap;
+
+  /// 这个模型的实测情况；为空表示还没调用过。
+  final ModelHealth? health;
 
   static const radius = BorderRadius.all(Radius.circular(AppShape.lg));
 
@@ -848,6 +874,31 @@ class _ModelCard extends StatelessWidget {
     final description = model.description?.trim();
     final name = shortModelName(model.name);
     final duration = AppMotion.of(context, AppMotion.quick);
+
+    final good = health?.usable ?? false;
+    final bad = health?.broken ?? false;
+    // 选中是唯一的主色实心信号，状态色不和它抢。
+    final fill = selected
+        ? colors.primary.withValues(alpha: dark ? 0.14 : 0.07)
+        : good
+        ? dsh.success.withValues(alpha: dark ? 0.12 : 0.07)
+        : bad
+        ? dsh.danger.withValues(alpha: dark ? 0.10 : 0.05)
+        : colors.primary.withValues(alpha: 0);
+    final line = selected
+        ? colors.primary.withValues(alpha: dark ? 0.7 : 0.55)
+        : good
+        ? dsh.success.withValues(alpha: dark ? 0.55 : 0.45)
+        : bad
+        ? dsh.danger.withValues(alpha: dark ? 0.45 : 0.32)
+        : colors.primary.withValues(alpha: 0);
+
+    final Widget? badge = good
+        ? _HealthBadge(text: health?.avgTtftMs == null ? null : '${health!.avgTtftMs}ms', color: dsh.success)
+        : bad
+        ? _HealthBadge(text: appL10n.viewModelUnavailable, color: dsh.danger)
+        : null;
+
     return Semantics(
       button: true,
       enabled: onTap != null,
@@ -866,17 +917,10 @@ class _ModelCard extends StatelessWidget {
             curve: AppMotion.std,
             padding: const EdgeInsets.all(16),
             decoration: ShapeDecoration(
-              color: selected
-                  ? colors.primary.withValues(alpha: dark ? 0.14 : 0.07)
-                  : colors.primary.withValues(alpha: 0),
+              color: fill,
               shape: RoundedSuperellipseBorder(
                 borderRadius: radius,
-                side: BorderSide(
-                  color: selected
-                      ? colors.primary.withValues(alpha: dark ? 0.7 : 0.55)
-                      : colors.primary.withValues(alpha: 0),
-                  width: 1.5,
-                ),
+                side: BorderSide(color: line, width: 1.5),
               ),
             ),
             child: Column(
@@ -900,13 +944,23 @@ class _ModelCard extends StatelessWidget {
                     _CheckMark(selected: selected),
                   ],
                 ),
-                if (description != null && description.isNotEmpty) ...[
+                if ((description != null && description.isNotEmpty) || badge != null) ...[
                   const SizedBox(height: 2),
-                  Text(
-                    description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(color: dsh.textTertiary),
+                  Row(
+                    children: [
+                      if (description != null && description.isNotEmpty)
+                        Expanded(
+                          child: Text(
+                            description,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(color: dsh.textTertiary),
+                          ),
+                        )
+                      else
+                        const Spacer(),
+                      if (badge != null) ...[const SizedBox(width: 6), badge],
+                    ],
                   ),
                 ],
               ],
@@ -914,6 +968,42 @@ class _ModelCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 卡片右下角的状态徽标：绿点 + 延迟，或红点 + 「不可用」。
+///
+/// `text` 为空时只画点（跑通过但没有可用的平均延迟样本）。
+class _HealthBadge extends StatelessWidget {
+  const _HealthBadge({required this.text, required this.color});
+
+  final String? text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        if (text != null) ...[
+          const SizedBox(width: 4),
+          Text(
+            text!,
+            maxLines: 1,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
