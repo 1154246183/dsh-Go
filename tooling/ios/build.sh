@@ -22,5 +22,11 @@ if [ "$status" -ne 0 ]; then
     if (getline following > 0) line = line " | " following
     print line
   }' "$log" | awk '!seen[$0]++' | cut -c1-600 | head -10 | sed -e 's/%/%25/g' -e 's/^/::error::/'
+  # 注解只收 error: 形态的行。xcodebuild 有时既不输出 error: 也不给 (Xcode): 前缀
+  # （例如签名或打包阶段失败），那时上面什么都抓不到，日志里就只剩 Flutter 那句
+  # “requires a selected Development Team”。把尾部原样打出来，否则无从判断。
+  echo "::group::flutter build ios 输出（末尾 400 行）"
+  tail -400 "$log" | sed -e 's/%/%25/g'
+  echo "::endgroup::"
 fi
 exit "$status"
