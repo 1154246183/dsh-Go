@@ -1,0 +1,257 @@
+# Builds the app for a physical iPhone, unsigned, and packages it as an .ipa.
+# Trimmed from the repository's own workflow: the simulator round trips are
+# dropped, the iOS 15.0 deployment target is asserted, and the only artifact is
+# the unsigned ipa a TrollStore device installs.
+name: iOS build IPA
+
+on:
+  push:
+    branches: ['feat/ios-**', 'ios/**']
+    # 只在这些路径变化时构建 App。改插件、文档不该牵动一次二十多分钟的编译，
+    # 更不该把正在跑的那次取消掉。
+    paths:
+      - 'app/**'
+      - 'runtime/**'
+      - 'tooling/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/ios-compile.yml'
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Runner image (macos-26 has Xcode 26; macos-15 is easier to get)'
+        required: false
+        default: macos-26
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # 同时只留一个构建，但不要取消正在跑的那个：一次编译要二十多分钟，
+  # 中途掐掉等于白等。新来的排队，跑完的自然结束。
+  #
+  # 手动触发和 push 会各起一个 run，它们落在同一个组里，所以手动触发只在
+  # 队列为空时才需要（见下面 rebuild 脚本）。
+  group: ios-build-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ipa:
+    # macos-26 容量紧张时会长时间排队；用它时要保证 Xcode 26 存在，
+    # 换到别的镜像则由下面的 “Select Xcode” 步骤挑最新的一个。
+    runs-on: ${{ inputs.runner || 'macos-26' }}
+    timeout-minutes: 150
+    env:
+      DSH_IOS_ENGINE_WORK: ${{ github.workspace }}/../engine-work
+      FLUTTER_VERSION: 3.47.7
+      FLUTTER_SHA256: dd9da574c3168460550117eb0e8dd0313ae934fabf64a82a6d557fff5fd1422e
+    steps:
+      - name: Select Xcode
+        run: |
+          echo "runner: ${{ inputs.runner || 'macos-26' }}"
+          ls -d /Applications/Xcode*.app 2>/dev/null || echo "(no Xcode in /Applications)"
+          # 钉住 Xcode 版本，不要取「最新的那个」。
+          #
+          # macos-26 镜像在滚动升级：d38dfd6d 成功时是 Xcode 26.3，两小时后
+          # 1a142a35 换成 26.6.0 就构建失败——Flutter 3.47.7 在 26.6 上即使传了
+          # --no-codesign 仍然要求 Development Team，报错还把真正原因挡住，
+          # 只说「requires a selected Development Team with a Provisioning Profile」。
+          #
+          # 优先 26.3；没有就取 <= 26.3 的最大版本；再没有才退回最新。
+          pick="/Applications/Xcode_26.3.app"
+          if [ ! -d "$pick" ]; then
+            pick=""
+            for candidate in $(ls -d /Applications/Xcode_26.*.app 2>/dev/null | sort -V); do
+              version="$(basename "$candidate" | sed -e 's/^Xcode_//' -e 's/\.app$//')"
+              # 只接受主版本 26、次版本 <= 3 的。
+              case "$version" in
+                26.0|26.1|26.2|26.3) pick="$candidate" ;;
+              esac
+            done
+          fi
+          if [ -z "$pick" ]; then
+            echo '::warning title=xcode::Xcode 26.3 不可用，退回最新版本'
+            pick="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          fi
+          if [ -z "$pick" ]; then
+            pick="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
+          fi
+          test -n "$pick" || { echo '::error title=xcode::no Xcode found'; exit 1; }
+          echo "using $pick"
+          echo "DEVELOPER_DIR=$pick/Contents/Developer" >> "$GITHUB_ENV"
+          "$pick/Contents/Developer/usr/bin/xcodebuild" -version
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show the toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphone || true
+
+      - name: Prepare the engine
+        run: |
+          bash tooling/ios/prepare-engine.sh
+          ls -la app/ios/Engine
+
+      - name: Install the iSH build tools
+        run: |
+          brew install llvm lld
+          python3 -m venv "$RUNNER_TEMP/ish-tools"
+          "$RUNNER_TEMP/ish-tools/bin/pip" install meson==1.7.2 ninja==1.11.1.4
+          echo "$RUNNER_TEMP/ish-tools/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
+          PATH="$(brew --prefix lld)/bin:$PATH" ld.lld --version
+
+      - name: Build the iSH guest frameworks for the device
+        run: |
+          out="app/ios/Engine/build/iphoneos/guest"
+          bash tooling/ios/build-guest-addon.sh iphoneos "$out"
+          ls -la "$out"
+
+      - name: Build the engine native frameworks for the device
+        run: |
+          bash tooling/ios/build-engine-native.sh iphoneos "$RUNNER_TEMP/device"
+          ls -la "$RUNNER_TEMP/device"
+
+      - name: Install Flutter
+        run: |
+          archive="flutter_macos_arm64_${FLUTTER_VERSION}-stable.zip"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/$archive"
+          echo "$FLUTTER_SHA256  $RUNNER_TEMP/$archive" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/$archive" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve dependencies
+        run: |
+          flutter --version
+          python3 app/tool/l10n_merge.py --no-gen
+          cd app
+          flutter pub get --enforce-lockfile
+          flutter gen-l10n
+
+      - name: Check the iOS 15.0 deployment target
+        run: |
+          pbx=app/ios/Runner.xcodeproj/project.pbxproj
+          grep -n 'IPHONEOS_DEPLOYMENT_TARGET' "$pbx"
+          grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 15.0;' "$pbx" || {
+            echo '::error title=deployment target::the app has no iOS 15.0 deployment target'; exit 1; }
+          grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 16.0;' "$pbx" && \
+            echo '::warning title=deployment target::16.0 is present; it must belong to the PhoneRunner target only'
+
+      - name: Build the app for a device, unsigned
+        working-directory: app
+        # 签名开关由 tooling/ios/build.sh 传给 xcodebuild：Flutter 的
+        # --no-codesign 只跳过产物签名，工程里 CODE_SIGN_STYLE = Automatic
+        # 仍会让它去找 Development Team，找不到就报错。
+        run: bash ../tooling/ios/build.sh --release --no-codesign
+
+      - name: Bundle the built-in plugin
+        run: |
+          app="app/build/ios/iphoneos/Runner.app"
+          dest="$app/builtin-plugins/dsh-our-free-model"
+          mkdir -p "$dest"
+          # 按插件自己的 files 清单取；win32 引擎分片 iOS 用不上，去掉省 31 MB。
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/ofm.tar.gz" \
+            https://codeload.github.com/Ebony-Vinyl/dsh-our-free-model/tar.gz/refs/heads/main
+          mkdir -p "$RUNNER_TEMP/ofm"
+          tar -xzf "$RUNNER_TEMP/ofm.tar.gz" -C "$RUNNER_TEMP/ofm" --strip-components=1
+          src="$RUNNER_TEMP/ofm"
+          for item in index.js client.js adapter locale icon.svg cordis.patch.yml LICENSE package.json; do
+            [ -e "$src/$item" ] && cp -R "$src/$item" "$dest/" || true
+          done
+          mkdir -p "$dest/src"
+          find "$src/src" -maxdepth 1 -name '*.js' -exec cp {} "$dest/src/" \;
+          for dir in providers route; do
+            [ -d "$src/src/$dir" ] && cp -R "$src/src/$dir" "$dest/src/" || true
+          done
+          mkdir -p "$dest/vendor"
+          [ -d "$src/vendor/channel-pack" ] && cp -R "$src/vendor/channel-pack" "$dest/vendor/" || true
+          [ -d "$src/vendor/magpie" ] && cp -R "$src/vendor/magpie" "$dest/vendor/" || true
+          test -f "$dest/index.js" || { echo '::error title=plugin::the built-in plugin did not land'; exit 1; }
+          echo "built-in plugin size: $(du -sh "$dest" | cut -f1)"
+          # 修补 Trae 的错误分类：裸数字子串判限流 + 404 记限流，
+          # 会把模型误标成「限流中」（hard-plan 冷却 12 小时）。
+          # 细节见 tooling/ios/patch-ofm.py 的注释。
+          python3 ../tooling/ios/patch-ofm.py "$dest"
+          grep -q 'DSH-PATCH' "$dest/vendor/channel-pack/pack.js" || \
+            { echo '::error title=plugin patch::补丁没有落进 pack.js'; exit 1; }
+          echo "patched size: $(du -sh "$dest" | cut -f1)"
+
+      - name: Bundle dsh-purge
+        run: |
+          # dsh-purge：按它 package.json 的 files 清单打包。
+          # 来源是 kingcharleslzy-ai/dsh-purge（社区维护版）。**不要用
+          # mmparko/dsh-purge**：那个版本会无条件往 prompt 里写 {{cwd}}，
+          # 而本机引擎只注册了 provider/model 两个变量，于是每一轮都报
+          # unknown prompt variable 直接失败。这个版本会先探测
+          # assembled.variables 里有没有 cwd，没有就退回静态文本。
+          # 依赖只有 peer 的 @deepseek-ai/cordis（由宿主提供），整份复制即可。
+          app="app/build/ios/iphoneos/Runner.app"
+          dest="$app/builtin-plugins/dsh-purge"
+          mkdir -p "$dest"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/purge.tar.gz" \
+            https://codeload.github.com/kingcharleslzy-ai/dsh-purge/tar.gz/refs/heads/master
+          mkdir -p "$RUNNER_TEMP/purge"
+          tar -xzf "$RUNNER_TEMP/purge.tar.gz" -C "$RUNNER_TEMP/purge" --strip-components=1
+          src="$RUNNER_TEMP/purge"
+          # files 清单：lib bin docs presets skills scripts client.js
+          # cordis.patch.yml screenshots.json README*.md LICENSE，另加 package.json。
+          # 注意 lib/default-prompt-inject.md 被上游 .npmignore 排除，这里照做。
+          for item in lib bin docs presets skills scripts locale packages market; do
+            [ -d "$src/$item" ] && cp -R "$src/$item" "$dest/" || true
+          done
+          for item in client.js cordis.patch.yml screenshots.json package.json LICENSE \
+                      NOTICE.md CONTRIBUTORS.md AGENTS.md icon.png \
+                      README.md README.zh-CN.md; do
+            [ -e "$src/$item" ] && cp "$src/$item" "$dest/" || true
+          done
+          rm -f "$dest/lib/default-prompt-inject.md"
+          # 主入口必须在，否则装上也启用不了。
+          test -f "$dest/lib/index.js" || {
+            echo '::error title=plugin::dsh-purge 的 lib/index.js 没落进包里'; exit 1; }
+          test -f "$dest/package.json" || {
+            echo '::error title=plugin::dsh-purge 的 package.json 没落进包里'; exit 1; }
+          echo "dsh-purge size: $(du -sh "$dest" | cut -f1)"
+          ls -la "$dest"
+
+      - name: Sign with the HID entitlement
+        run: |
+          brew install ldid || true
+          LLDID="$(command -v ldid || echo /opt/homebrew/bin/ldid)"
+          app="app/build/ios/iphoneos/Runner.app"
+          # platform-application 是整屏截图的前提（否则 UIGetScreenImage 只给全黑），
+          # HID 用于点按与滑动，launchapplications 用于打开其它 App。
+          # 刻意不带 no-sandbox：那个变体在 XinaA15 上会被 TrollStore 拒装。
+          ent="app/ios/Runner/ent-platform.plist"
+          test -f "$ent" || { echo '::error title=entitlements::missing'; exit 1; }
+          echo "Frameworks embedded:"; ls "$app/Frameworks"
+          echo "built-in plugin:"; du -sh "$app/builtin-plugins" 2>/dev/null || echo none
+          # 只签主二进制：TrollStore 从这里读 entitlements 再签整包。
+          # 绝不能对 App.framework/App 跑 ldid，Dart AOT 快照会校验失败。
+          "$LLDID" -S"$ent" "$app/Runner"
+          echo "=== entitlements ==="
+          "$LLDID" -e "$app/Runner"
+          for key in platform-application hid.client.event-dispatch springboard.launchapplications; do
+            "$LLDID" -e "$app/Runner" | grep -q "$key" \
+              || { echo "::error title=entitlements::$key did not land"; exit 1; }
+          done
+          rm -rf "$RUNNER_TEMP/ip"; mkdir -p "$RUNNER_TEMP/ip/Payload"
+          cp -R "$app" "$RUNNER_TEMP/ip/Payload/"
+          (cd "$RUNNER_TEMP/ip" && /usr/bin/ditto -c -k --keepParent Payload "$RUNNER_TEMP/DSH-Go.ipa")
+          du -h "$RUNNER_TEMP/DSH-Go.ipa"
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app/Info.plist" || true
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-ipa
+          path: |
+            ${{ runner.temp }}/DSH-Go.ipa
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 14
