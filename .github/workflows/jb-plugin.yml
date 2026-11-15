@@ -133,13 +133,10 @@ jobs:
           plist_bin jbplugin/DshScreenshotService.plist \
             build/Library/MobileSubstrate/DynamicLibraries/DshProbe2.plist
 
-          # DshScreenshotService 仍然静态链接 UIKit，实测会让 SpringBoard 崩溃
-          # 进安全模式。保留源码和构建但不打包，等它改成全动态再说。
-          if [ "${DSH_BUILD_SERVICE:-0}" = "1" ]; then
-            build_tweak DshScreenshotService.dylib jbplugin/DshScreenshotService.m -O2
-          else
-            echo "跳过 DshScreenshotService（静态链接 UIKit 会 PAC 崩）"
-          fi
+          # DshScreenshotService 已改成全动态：链接期只留 Foundation，
+          # UIKit / CoreGraphics 的符号全部 dlsym 运行时解析。这样 arm64e 上
+          # 不会生成 PAC chained fixup，SpringBoard 能安全加载。
+          build_tweak DshScreenshotService.dylib jbplugin/DshScreenshotService.m -O2
 
           plist_bin jbplugin/DshScreenshotService.plist \
             build/Library/MobileSubstrate/DynamicLibraries/DshProbe.plist
