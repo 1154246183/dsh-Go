@@ -976,12 +976,47 @@ final class IOSJailbreakDevice: @unchecked Sendable {
     return image
   }
 
+  /// 走 SpringBoard 插件取一张整屏。
+  ///
+  /// App 在自己的沙盒进程里截不到别的 App：`UIGetScreenImage` 只返回本进程
+  /// 的图层，越狱授权也改不了这一点。只有注入 SpringBoard 的代码看得见整个
+  /// 屏幕，所以那里开了一个只绑回环的端口，这里去要一张 PNG。
+  ///
+  /// 插件不在（没装 / 没注入 / 端口没起）时返回 nil，调用方继续走别的路。
+  /// 超时压得很短：读屏是交互路径，等太久不如快速失败换个办法。
+  private func viaScreenPlugin() -> UIImage? {
+    guard let url = URL(string: "http://127.0.0.1:47191/capture?key=dsh-go-screen-v1") else { return nil }
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 3
+    request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+    let sema = DispatchSemaphore(value: 0)
+    var image: UIImage?
+    let task = URLSession.shared.dataTask(with: request) { data, response, error in
+      defer { sema.signal() }
+      guard error == nil else { return }
+      if let http = response as? HTTPURLResponse, http.statusCode != 200 { return }
+      guard let data, data.count > 1024, let shot = UIImage(data: data) else { return }
+      image = shot
+    }
+    task.resume()
+    _ = sema.wait(timeout: .now() + 4)
+    task.cancel()
+    return image
+  }
+
   private func capture() -> Outcome {
-    // 两条路：沙盒内直接截屏（有平台权限时有效），以及读相册最新截图
-    // （NiceBarX + DSH截图 快捷指令产出的整屏）。后者在越狱机上更可靠。
-    var image = screenImage()
+    // 三条路，按可靠性排序：
+    //   ① SpringBoard 插件：唯一能看见别的 App 的路
+    //   ② 本进程直接截屏：只有在 App 自己前台时才有内容
+    //   ③ App Group / 相册里外部同步进来的图
+    var image = viaScreenPlugin()
+    var viaPlugin = image != nil
+    if image == nil || Self.isBlank(image!) {
+      image = screenImage()
+      viaPlugin = false
+    }
     var viaAlbum = false
-    // 直接截屏拿不到（或只拿到黑图）时，退回相册里刚生成的那张整屏。
+    // 前两条都拿不到（或只拿到黑图）时，退回外部同步进来的那张整屏。
     let directBlank = image.map { Self.isBlank($0) } ?? true
     if directBlank {
       if let album = latestAlbumScreenshot(), !Self.isBlank(album) {
@@ -989,6 +1024,7 @@ final class IOSJailbreakDevice: @unchecked Sendable {
         viaAlbum = true
       }
     }
+    _ = viaPlugin
     guard let shot = image else {
       return Outcome(status: 1, metadata: Self.json([
         "outcome": "notSent", "code": "ERR_PHONE_JAILBREAK_CAPTURE",
