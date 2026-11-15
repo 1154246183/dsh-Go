@@ -1,0 +1,241 @@
+name: Build jailbreak plugin
+
+# 单独编译注入 SpringBoard 的截图插件，产物是一个 .deb。
+# 和 App 的构建互不影响，可以并行跑。
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['ios/**']
+    paths:
+      - 'jbplugin/**'
+      - '.github/workflows/jb-plugin.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jb-plugin-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deb:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Select Xcode
+        run: |
+          pick="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
+          test -n "$pick" || { echo '::error title=xcode::no Xcode found'; exit 1; }
+          echo "DEVELOPER_DIR=$pick/Contents/Developer" >> "$GITHUB_ENV"
+          "$pick/Contents/Developer/usr/bin/xcodebuild" -version
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install dpkg and ldid
+        run: |
+          # macOS 的 runner 自带 dpkg-deb（在 /usr/local/bin），没有就用 brew。
+          if ! command -v dpkg-deb >/dev/null 2>&1; then
+            brew install dpkg || true
+          fi
+          command -v dpkg-deb && dpkg-deb --version | head -1
+          # ldid 用来给 dshtool 签平台级授权。macOS runner 默认没有，
+          # 必须装：没有它 dshtool 就是未签名二进制，HID 事件会被内核丢弃，
+          # 于是「点击无反应」而日志里一切正常。
+          if ! command -v ldid >/dev/null 2>&1; then
+            brew install ldid || brew install ProcursusTeam/ldid/ldid || true
+          fi
+          command -v ldid && ldid -v 2>&1 | head -1 || echo 'ldid still missing'
+
+      - name: Compile the tweak
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          echo "SDK: $SDK"
+          mkdir -p build/DEBIAN build/Library/MobileSubstrate/DynamicLibraries
+          # 目标设备是 iOS 15.0 / arm64。产物不签名：TrollStore 安装不走代码
+          # 签名校验，SpringBoard 加载 dylib 也不需要签名。
+          # 用 bash 数组拼参数，避免 YAML 里的反斜杠续行被当成字面量。
+          #
+          # SpringBoard 在 A15 上是 arm64e，TweakInject 只加载带 arm64e 切片的
+          # dylib；单 arm64 的会被静默跳过（既不报错也不加载）。
+          #
+          # 但只编 arm64e 又会让手机进安全模式——因为 arm64e 带指针认证（PAC），
+          # 未签名的 arm64e 一加载就崩。所以必须：双切片 + lipo 合并 + ldid 签名。
+          # ldid 重签会重做 PAC 重定位，这是它能安全加载的关键。
+          LLDID_T="$(command -v ldid || echo /opt/homebrew/bin/ldid)"
+          # 关键：只链接 Foundation。
+          #
+          # arm64e 上，dylib 对「链接进来」的 ObjC/CG 符号会生成需要指针认证
+          # （PAC）的 chained fixup。未正确签名时，SpringBoard 在 libobjc 加载
+          # 阶段就崩，崩溃日志写 "possible pointer authentication failure"。
+          #
+          # 实测：只链 Foundation 的探针能稳定注入；链了 UIKit + CoreGraphics
+          # 的截图服务会直接把手机打进安全模式。
+          #
+          # 所以 UIKit / CoreGraphics / ImageIO 全部改成运行时 dlopen + dlsym，
+          # 链接期一个都不留。这也是 DshProbe 现在能截图的原因。
+          build_tweak() {
+            local name="$1" src="$2" opt="$3"
+            local out="build/Library/MobileSubstrate/DynamicLibraries/$name"
+            local ok=1
+            for arch in arm64 arm64e; do
+              echo "--- 编译 $name ($arch) ---"
+              xcrun --sdk iphoneos clang \
+                -arch "$arch" \
+                -target "${arch}-apple-ios15.0" \
+                -miphoneos-version-min=15.0 \
+                -isysroot "$SDK" \
+                -dynamiclib \
+                -fobjc-arc \
+                "$opt" \
+                -framework Foundation \
+                -o "${out}.${arch}" "$src" || ok=0
+            done
+            if [ "$ok" = "1" ] && [ -f "${out}.arm64e" ]; then
+              lipo -create -arch arm64 "${out}.arm64" -arch arm64e "${out}.arm64e" -output "$out"
+              rm -f "${out}.arm64" "${out}.arm64e"
+            else
+              echo "::warning title=$name::arm64e 编译失败，退回单 arm64"
+              mv "${out}.arm64" "$out" 2>/dev/null || true
+              rm -f "${out}.arm64e"
+            fi
+            echo "=== $name 架构 ==="
+            lipo -info "$out"
+            # 检查链接的库：只应有 Foundation / libSystem
+            echo "--- $name 依赖 ---"
+            otool -L "$out" | head -12
+          }
+
+          # DshProbe 只链接 Foundation（全动态加载 UIKit/CG），可以安全注入。
+          # 关键：plist 必须转成二进制。
+          #
+          # XinaA15 的 TweakInject 只认二进制 plist（bplist00）。XML 格式会被
+          # 静默跳过——不报错、不加载，表现就是"插件装了却毫无反应"。
+          #
+          # 这一条卡了很久：之前唯一一次成功注入，是我手动把 plist 转二进制
+          # 再 scp 上去的；而所有通过 deb 安装的尝试都失败，因为 workflow
+          # 直接 cp 了 XML 源文件。
+          plist_bin() {
+            local src="$1" dst="$2"
+            cp "$src" "$dst"
+            plutil -convert binary1 "$dst" || {
+              echo "::error title=plist::$dst 转二进制失败"
+              exit 1
+            }
+            echo "--- $dst ---"
+            head -c 8 "$dst" | od -c | head -1
+          }
+
+          build_tweak DshProbe2.dylib jbplugin/DshProbe.m -O1
+          plist_bin jbplugin/DshScreenshotService.plist \
+            build/Library/MobileSubstrate/DynamicLibraries/DshProbe2.plist
+
+          # DshScreenshotService 仍然静态链接 UIKit，实测会让 SpringBoard 崩溃
+          # 进安全模式。保留源码和构建但不打包，等它改成全动态再说。
+          if [ "${DSH_BUILD_SERVICE:-0}" = "1" ]; then
+            build_tweak DshScreenshotService.dylib jbplugin/DshScreenshotService.m -O2
+          else
+            echo "跳过 DshScreenshotService（静态链接 UIKit 会 PAC 崩）"
+          fi
+
+          plist_bin jbplugin/DshScreenshotService.plist \
+            build/Library/MobileSubstrate/DynamicLibraries/DshProbe.plist
+
+          cp jbplugin/control build/DEBIAN/control
+
+          # dshtool：root 下的读屏与点按命令行工具。
+          # 它不依赖插件注入，App 通过本机 sshd 调用它，因此绕开了
+          # 「沙盒进程看不到别的 App」这个根本限制。
+          mkdir -p build/usr/bin
+          tool_args=(
+            -arch arm64
+            -miphoneos-version-min=15.0
+            -isysroot "$SDK"
+            -fobjc-arc
+            -O2
+            -framework Foundation
+            -framework UIKit
+            -framework CoreGraphics
+            -framework IOSurface
+            -framework ImageIO
+            -o build/usr/bin/dshtool
+            jbplugin/dshtool.m
+          )
+          xcrun --sdk iphoneos clang "${tool_args[@]}"
+          echo "=== dshtool ==="
+          file build/usr/bin/dshtool
+          # root 下 exec 需要有效签名；用平台级授权签，读屏和 HID 才可用。
+          LLDID="$(command -v ldid || echo /opt/homebrew/bin/ldid)"
+          if [ ! -x "$LLDID" ]; then
+            echo '::error title=ldid::ldid 缺失，dshtool 无法签名，HID 不会生效'
+            exit 1
+          fi
+          "$LLDID" -Sjbplugin/ent-dshtool.plist build/usr/bin/dshtool
+          echo "已用 ldid 签名"
+          # 逐项断言授权真的进了二进制。以前这里只打了一行 warning 就继续，
+          # 结果产出一个未签名的工具，点击静默失效，排查了很久。
+          for key in platform-application com.apple.private.hid.client.event-dispatch \
+                     com.apple.private.security.no-sandbox; do
+            "$LLDID" -e build/usr/bin/dshtool | grep -q "$key" \
+              || { echo "::error title=entitlements::dshtool 缺 $key"; exit 1; }
+          done
+          echo "授权检查通过"
+
+      - name: Package the debs
+        run: |
+          set -euo pipefail
+          # 两个包分开打。
+          #
+          # 以前只有一个包，里面既有 dylib 又有 dshtool。装到手机上时 dpkg 先建
+          # ./Library/MobileSubstrate 目录，而 /var/jb 下这一层是只读的，于是整个
+          # 安装失败——连能装的 dshtool 也一起装不进去，表现为「工具还是旧版本」。
+          # 拆开之后，纯工具那个包不碰只读路径，每次都能装上。
+          command -v dpkg-deb >/dev/null 2>&1 || { echo '::error title=dpkg::dpkg-deb missing'; exit 1; }
+
+          # 1) 工具包：只有 var/jb/usr/bin/dshtool
+          #
+          # 路径必须是 var/jb/usr/bin，不是 usr/bin。iOS 15 rootless 上 /usr/bin
+          # 是只读的系统卷，dpkg 会报 "unable to create ... Read-only file system"
+          # 然后整体失败——之前工具一直装不上就是这个原因。
+          rm -rf pkg-tool
+          mkdir -p pkg-tool/DEBIAN pkg-tool/var/jb/usr/bin
+          cp build/usr/bin/dshtool pkg-tool/var/jb/usr/bin/dshtool
+          chmod 0755 pkg-tool/var/jb/usr/bin/dshtool
+          # 用 printf 写 control：heredoc 的内容在 YAML 里必须缩进，缩进了又会把
+          # 空格写进 control 文件，两头不讨好。printf 每行一个参数最干净。
+          printf '%s\n' \
+            'Package: com.dshgo.dshtool' \
+            'Name: DSH Go Screen Tool' \
+            'Version: 1.0.0' \
+            'Architecture: iphoneos-arm' \
+            'Description: 读屏与点按的命令行工具，由本机 sshd 以 root 调用。' \
+            'Maintainer: dsh-go' \
+            'Section: Utilities' \
+            'Installed-Size: 128' \
+            > pkg-tool/DEBIAN/control
+          dpkg-deb --build --root-owner-group pkg-tool DshTool.deb
+          echo "=== DshTool.deb ==="
+          dpkg-deb -c DshTool.deb
+
+          # 2) 插件包：只有 dylib 与 plist
+          rm -rf pkg-tweak
+          mkdir -p pkg-tweak/DEBIAN pkg-tweak/Library/MobileSubstrate/DynamicLibraries
+          cp build/Library/MobileSubstrate/DynamicLibraries/* pkg-tweak/Library/MobileSubstrate/DynamicLibraries/
+          chmod 0755 pkg-tweak/Library/MobileSubstrate/DynamicLibraries/*.dylib
+          chmod 0644 pkg-tweak/Library/MobileSubstrate/DynamicLibraries/*.plist
+          cp build/DEBIAN/control pkg-tweak/DEBIAN/control
+          dpkg-deb --build --root-owner-group pkg-tweak DshTweak.deb
+          echo "=== DshTweak.deb ==="
+          dpkg-deb -c DshTweak.deb
+
+      - name: Upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: jb-screen-deb
+          path: |
+            DshTool.deb
+            DshTweak.deb
+          if-no-files-found: error
