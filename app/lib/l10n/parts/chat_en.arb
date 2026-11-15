@@ -252,6 +252,7 @@
   "chatSubscriptionExpired": "{name} sign-in expired",
   "chatProviderKeyMissing": "No API key for this provider yet",
   "chatDeepSeekKeyMissing": "No DeepSeek API key yet",
+  "chatProviderCredentialMissing": "No usable credential for {provider}; sign in again",
   "chatOutputLimitReached": "Output limit reached",
   "chatTurnBlocked": "This turn was blocked",
   "chatTurnEngineRestarted": "The engine restarted, interrupting this turn",
