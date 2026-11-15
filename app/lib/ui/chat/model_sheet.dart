@@ -609,7 +609,8 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
                 models: shown.models,
                 selected: selected,
                 onPick: readOnly ? null : _pickModel,
-                health: ref.watch(modelHealthProvider).valueOrNull ?? const {},
+                // asData 在 riverpod 2 和 3 上都在；valueOrNull 只有 2.x 有。
+                health: ref.watch(modelHealthProvider).asData?.value ?? const {},
               ),
             ),
           ),
