@@ -12,21 +12,19 @@ if ! bash "$ROOT/tooling/ios/build-phone-self-runner.sh"; then
   exit 1
 fi
 
-# 彻底关掉代码签名，不要只依赖 `flutter build ios --no-codesign`。
+# 签名在工程里关掉了：Runner.xcodeproj 的 Debug/Release/Profile 三处
+# `CODE_SIGN_IDENTITY[sdk=iphoneos*]` 旁边都加了
+# `CODE_SIGNING_ALLOWED = NO; CODE_SIGNING_REQUIRED = NO;`。
 #
-# `--no-codesign` 只是让 Flutter 跳过**产物**签名；工程里
-# `CODE_SIGN_STYLE = Automatic` 仍然会让它去找 Development Team。找到不到时
-# Flutter 抛的是 code_signing.dart 里的**兜底文案**
-# （“Building a deployable iOS app requires a selected Development Team…”），
-# 真实原因被完全遮住。这个仓库本来就用 ldid 在 CI 后面手动签名，
-# 所以让 xcodebuild 根本不签名是正确做法，不是绕过。
-#
-# `FLUTTER_XCODE_<SETTING>` 会被 Flutter 原样变成同名 xcodebuild 构建设置。
-export FLUTTER_XCODE_CODE_SIGNING_ALLOWED=NO
-export FLUTTER_XCODE_CODE_SIGNING_REQUIRED=NO
-export FLUTTER_XCODE_CODE_SIGN_IDENTITY=""
-export FLUTTER_XCODE_EXPANDED_CODE_SIGN_IDENTITY=""
-export FLUTTER_XCODE_PROVISIONING_PROFILE_SPECIFIER=""
+# 为什么不在命令行传：`flutter build ios --no-codesign` 只让 Flutter 跳过
+# **产物**签名，xcodebuild 仍然带着工程的
+# `CODE_SIGNING_ALLOWED = YES` / `CODE_SIGN_IDENTITY = iPhone Developer`
+# 去要 Development Team，失败后 Flutter 抛的是 code_signing.dart 里的
+# **兜底文案**（"Building a deployable iOS app requires a selected
+# Development Team…"），真实原因被完全遮住。
+# 试过 `FLUTTER_XCODE_CODE_SIGNING_ALLOWED=NO` 之类的环境变量，实测不生效
+# （那次构建的 `xcodebuild -showBuildSettings` 仍是 YES），所以落到工程设置。
+# 这个仓库本来就用 ldid 在后面手动签名，xcodebuild 不签名才是对的。
 
 log="$(mktemp)"
 flutter build ios "$@" 2>&1 | tee "$log"
