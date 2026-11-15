@@ -216,7 +216,7 @@ ours() {
   /// since a non-interactive SSH shell often lacks the PATH from `~/.bashrc`.
   static const _dshSearch = r'''
 if ! command -v dsh >/dev/null 2>&1; then
-  F=""
+  F=
   for c in "$HOME/.local/bin" "$HOME/.npm-global/bin" "$HOME/.npm/bin" "$HOME/.volta/bin" "$HOME/.bun/bin" \
            "$HOME/.local/share/pnpm" "$HOME/Library/pnpm" /usr/local/bin /opt/homebrew/bin \
            "$HOME"/.nvm/versions/node/*/bin "$HOME"/.local/share/fnm/node-versions/*/installation/bin; do
@@ -244,7 +244,7 @@ printf 'DSHAPP dsh %s\n' "$(command -v dsh)"
       ..writeln('printf \'%s\' ${shQuote(launchCommand)} > "\$D/web.cmd"')
       ..writeln(': > "\$D/web.log"')
       ..writeln('NO_COLOR=1; export NO_COLOR')
-      ..writeln('N=""; if command -v nohup >/dev/null 2>&1; then N=nohup; fi')
+      ..writeln('N=; if command -v nohup >/dev/null 2>&1; then N=nohup; fi')
       ..writeln('\$N $launchCommand --host 127.0.0.1 --port 0 --no-open </dev/null >>"\$D/web.log" 2>&1 &')
       ..writeln('P=\$!')
       ..writeln('_st "\$P" > "\$D/web.st"')
