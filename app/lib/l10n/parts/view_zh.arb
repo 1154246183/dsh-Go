@@ -748,6 +748,7 @@
     }
   },
   "viewModelSelect": "选择模型",
+  "viewModelUnavailable": "不可用",
   "viewModelThinkingOff": "不思考",
   "viewModelThinkingMinimal": "极少",
   "viewModelThinkingLow": "低",
