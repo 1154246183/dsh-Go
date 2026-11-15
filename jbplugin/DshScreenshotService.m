@@ -43,7 +43,7 @@ typedef struct {
   // CoreGraphics C 函数
   size_t (*imageGetWidth)(void *);
   void (*imageRelease)(void *);
-  void (*imageRetain)(void *);
+  void *(*imageRetain)(void *);
   // UIKit C 函数
   void *(*screenImage)(void);              // UIGetScreenImage -> CGImageRef
   void *(*uiCreateScreenImage)(void);      // _UICreateScreenUIImage -> UIImage*
@@ -112,7 +112,7 @@ static NSData *DshCapturePNG(void) {
       if (gSymbols.imageGetWidth && gSymbols.imageGetWidth(cgImage) > 0) {
         id image = ((id (*)(id, SEL, void *))objc_msgSend)(
             (id)gSymbols.imageClass, gSymbols.imageWithCGImage, cgImage);
-        NSData *png = image ? gSymbols.pngRepresentation(image) : nil;
+        NSData *png = image ? (__bridge NSData *)gSymbols.pngRepresentation((__bridge void *)image) : nil;
         if (gSymbols.imageRelease) gSymbols.imageRelease(cgImage);
         if (png.length > 0) return png;
       } else if (gSymbols.imageRelease) {
@@ -125,7 +125,7 @@ static NSData *DshCapturePNG(void) {
   if (gSymbols.uiCreateScreenImage) {
     id image = ((id (*)(void))gSymbols.uiCreateScreenImage)();
     if (image) {
-      NSData *png = gSymbols.pngRepresentation(image);
+      NSData *png = (__bridge NSData *)gSymbols.pngRepresentation((__bridge void *)image);
       if (png.length > 0) return png;
     }
   }
