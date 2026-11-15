@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dsh_client/dsh_client.dart';
 
 import '../../l10n/l10n.dart';
@@ -117,7 +119,7 @@ class RemoteDshBootstrap {
   }
 
   Future<RemoteProbe> probe() async {
-    final result = await shell.run(probeScript(), timeout: const Duration(seconds: 20));
+    final result = await shell.run(wire(probeScript()), timeout: const Duration(seconds: 20));
     if (_missingShell(result)) throw _noShell(result);
     return parseProbe(result.stdout);
   }
@@ -126,8 +128,8 @@ class RemoteDshBootstrap {
     final runner = shell;
     final timeout = startTimeout + const Duration(seconds: 20);
     final result = runner is RemoteBootstrapShell
-        ? await runner.runBootstrap(startScript(), timeout: timeout)
-        : await runner.run(startScript(), timeout: timeout);
+        ? await runner.runBootstrap(wire(startScript()), timeout: timeout)
+        : await runner.run(wire(startScript()), timeout: timeout);
     if (_missingShell(result)) throw _noShell(result);
     return parseStart(result, customCommand: !_defaultCommand, command: launchCommand);
   }
@@ -135,11 +137,23 @@ class RemoteDshBootstrap {
   /// Stops dsh-app's managed instance (if any). Not used on disconnect: the
   /// server is meant to outlive the phone's connection.
   Future<void> stop() async {
-    await shell.run(stopScript(), timeout: const Duration(seconds: 15));
+    await shell.run(wire(stopScript()), timeout: const Duration(seconds: 15));
   }
 
   // ---------------------------------------------------------------------------
   // Scripts (POSIX sh; also tested against the local /bin/sh).
+
+  /// Windows OpenSSH 会把远端命令里的双引号吃掉：sshd 组装 `bash -c "<cmd>"`
+  /// 时没有转义内部引号，命令里第一个 `"` 会闭合外层引号，之后的内容按空格拆分，
+  /// 于是 `[ -n "$L" ]` 变成 `[ -n $L ]`（too many arguments）、`printf "$L"`
+  /// 拆成多个词，启动脚本永远读不到 token。
+  ///
+  /// base64 字母表里没有引号，因此用 base64 传脚本可以完全绕开这个缺陷：
+  /// 远端 `base64 -d` 解码后，再由 sh 按原样解析引号。
+  static String wire(String script) {
+    final encoded = base64Encode(utf8.encode(script));
+    return 'printf %s $encoded | base64 -d | sh';
+  }
 
   String _prelude() {
     final b = StringBuffer()..writeln('umask 077');
