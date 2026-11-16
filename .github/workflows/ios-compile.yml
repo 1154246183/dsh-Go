@@ -121,6 +121,17 @@ jobs:
           grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 16.0;' "$pbx" && \
             echo '::warning title=deployment target::16.0 is present; it must belong to the PhoneRunner target only'
 
+      - name: Analyze Dart before the expensive build
+        working-directory: app
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee /tmp/analyze.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E '^\s+error •' /tmp/analyze.log | head -40 | sed 's/%/%25/g' | sed 's/^/::error title=dart::/'
+          fi
+          exit "$status"
+
       - name: Build the app for a device, unsigned
         working-directory: app
         # 签名开关由 tooling/ios/build.sh 传给 xcodebuild：Flutter 的
