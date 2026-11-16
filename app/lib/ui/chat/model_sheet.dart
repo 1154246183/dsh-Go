@@ -442,57 +442,93 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
   /// Closes the sheet once the effort thumb has landed.
   Timer? _close;
 
-  /// 批量测速结果：渠道 id → 一次网络往返的毫秒数（null 表示这次失败）。
-  final Map<String, int?> _probeMs = {};
+  /// 批量测速结果：`provider\u0000model` → 首字毫秒（-1 表示这次失败）。
+  final Map<String, int> _probeMs = {};
   bool _probing = false;
-  bool _probeBlocked = false;
+  int _probed = 0;
+  int _probeTotal = 0;
 
-  /// 逐个渠道走一次 `llm/discoverModels`（引擎侧 GET {baseURL}/models），
-  /// 量的是真实往返：建连 + 鉴权 + 响应，用的还是引擎里已存的密钥。
-  /// 串行跑，免得并发抢带宽把数字压歪。
-  Future<void> _probeChannels(List<ProviderGroup> groups) async {
-    if (_probing || groups.isEmpty) return;
+  static String _probeKey(String provider, String model) => '$provider\u0000$model';
+
+  /// 逐个数着测：开一个临时会话、选上这个模型、发一句话，
+  /// 量到第一个输出分片（[AssistantChunkEvent]）为止——这才是用户
+  /// 真正感觉到的"发了多久才动"。测完取消并删掉临时会话。
+  /// 串行跑，免得并发抢带宽把数字压小。
+  Future<void> _probeModels(List<ModelInfo> models) async {
+    if (_probing || models.isEmpty) return;
     final conn = ref.read(readListLiveConnectionProvider);
-    if (conn == null) {
-      setState(() {
-        _probeBlocked = true;
-        _probeMs.clear();
-      });
-      return;
-    }
+    if (conn == null) return;
     setState(() {
       _probing = true;
-      _probeBlocked = false;
+      _probed = 0;
+      _probeTotal = models.length;
       _probeMs.clear();
     });
-    for (final group in groups) {
-      final watch = Stopwatch()..start();
-      int? ms;
+    final restore = _selection;
+    for (final model in models) {
+      var ms = -1;
+      String? scratch;
+      StreamSubscription<DshEvent>? sub;
       try {
-        await conn.client.discoverModels(provider: group.id, timeout: const Duration(seconds: 20));
-        ms = watch.elapsedMilliseconds;
+        scratch = (await conn.client.createSession()).sessionId;
+        final firstOutput = Completer<void>();
+        final watch = Stopwatch()..start();
+        sub = conn.client.watch(scratch).listen((event) {
+          if (!firstOutput.isCompleted && event is AssistantChunkEvent) {
+            ms = watch.elapsedMilliseconds;
+            firstOutput.complete();
+          }
+        });
+        await conn.client.setModel(scratch, provider: model.provider, model: model.id);
+        await conn.client.prompt(scratch, '你好');
+        await firstOutput.future.timeout(const Duration(seconds: 30));
       } on Object {
-        ms = null;
+        ms = -1;
       }
-      watch.stop();
+      await sub?.cancel();
+      if (scratch != null) {
+        try {
+          await conn.client.cancel(scratch);
+          await conn.client.deleteSessionPermanently(scratch);
+        } on Object {
+          // 临时会话收拾不干净也不影响测出来的数
+        }
+      }
       if (!mounted) return;
-      setState(() => _probeMs[group.id] = ms);
+      setState(() {
+        _probeMs[_probeKey(model.provider, model.id)] = ms;
+        _probed += 1;
+      });
+    }
+    // 选模型会顺带改掉"下次新会话用什么"，测完把原来的选回去。
+    if (restore != null) {
+      String? scratch;
+      try {
+        scratch = (await conn.client.createSession()).sessionId;
+        await conn.client.setModel(
+          scratch,
+          provider: restore.provider,
+          model: restore.model,
+          reasoningEffort: restore.reasoningEffort,
+        );
+        await conn.client.deleteSessionPermanently(scratch);
+      } on Object {
+        // 恢复失败不改结果
+      }
     }
     if (mounted) setState(() => _probing = false);
   }
 
-  /// 一行测速结果：`DeepSeek 320 ms · Our Free Model 810 ms`。
-  Widget _probeSummary(List<ProviderGroup> groups) {
+  /// 进度或一句结果：`测速中 3/13`。
+  Widget _probeStatus() {
     final theme = Theme.of(context);
     final dsh = DshColors.of(context);
     final style = theme.textTheme.labelSmall?.copyWith(color: dsh.textTertiary);
-    if (_probeBlocked) return Text('没有连上引擎', style: style);
-    final parts = [
-      for (final g in groups)
-        if (_probeMs.containsKey(g.id)) '${g.name} ${_probeMs[g.id] == null ? '失败' : '${_probeMs[g.id]} ms'}',
-    ];
-    if (parts.isEmpty) return const SizedBox.shrink();
-    return Text(parts.join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis, style: style);
+    if (_probing) return Text('测速中 $_probed/$_probeTotal', style: style);
+    if (_probeMs.isEmpty) return Text('点右边逐个量首字延迟', style: style);
+    final best = _probeMs.entries.where((e) => e.value > 0).map((e) => e.value);
+    if (best.isEmpty) return Text('这批都没测通', style: style);
+    return Text('最快 ${best.reduce((a, b) => a < b ? a : b)} ms · 共 $_probed 个', style: style);
   }
 
   @override
@@ -650,13 +686,13 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
           padding: const EdgeInsets.fromLTRB(inset, 0, inset, 10),
           child: Row(
             children: [
-              Expanded(child: _probeSummary(groups)),
+              Expanded(child: _probeStatus()),
               TextButton.icon(
-                onPressed: _probing ? null : () => _probeChannels(groups),
+                onPressed: _probing ? null : () => _probeModels(shown.models),
                 icon: _probing
                     ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(AppIcons.refresh, size: 16),
-                label: Text(_probing ? '测速中' : '批量测速'),
+                label: Text(_probing ? '测速中 $_probed/$_probeTotal' : '批量测速'),
               ),
             ],
           ),
@@ -677,6 +713,7 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
                 key: ValueKey(shown.id),
                 models: shown.models,
                 selected: selected,
+                latency: _probeMs,
                 onPick: readOnly ? null : _pickModel,
               ),
             ),
@@ -857,11 +894,20 @@ class _ChannelChip extends StatelessWidget {
 
 /// 两列等宽的模型卡,同一行等高、间距 12;单数时最后一张占满整行。
 class _ModelGrid extends StatelessWidget {
-  const _ModelGrid({super.key, required this.models, required this.selected, required this.onPick});
+  const _ModelGrid({
+    super.key,
+    required this.models,
+    required this.selected,
+    required this.onPick,
+    this.latency = const {},
+  });
 
   final List<ModelInfo> models;
   final ModelInfo? selected;
   final ValueChanged<ModelInfo>? onPick;
+
+  /// 测速结果，键是 `provider\u0000model`；没有就是还没测。
+  final Map<String, int> latency;
 
   static const gap = 12.0;
 
@@ -871,6 +917,7 @@ class _ModelGrid extends StatelessWidget {
       key: ValueKey('${model.provider}\u0000${model.id}'),
       model: model,
       selected: selected?.id == model.id && selected?.provider == model.provider,
+      latency: latency[_ModelSheetState._probeKey(model.provider, model.id)],
       onTap: onPick == null ? null : () => onPick!(model),
     );
     return Column(
@@ -901,11 +948,14 @@ class _ModelGrid extends StatelessWidget {
 /// 一张模型卡:短名(最多两行)+ 一行描述,右上角选择圈。选中时卡面染一层
 /// 很淡的主色、描一圈主色细边、圈里是实心对勾 —— 这一屏唯一的实心主色。
 class _ModelCard extends StatelessWidget {
-  const _ModelCard({super.key, required this.model, required this.selected, required this.onTap});
+  const _ModelCard({super.key, required this.model, required this.selected, required this.onTap, this.latency});
 
   final ModelInfo model;
   final bool selected;
   final VoidCallback? onTap;
+
+  /// 首字延迟毫秒；-1 是测过但没通过，null 是还没测。
+  final int? latency;
 
   static const radius = BorderRadius.all(Radius.circular(AppShape.lg));
 
@@ -970,13 +1020,32 @@ class _ModelCard extends StatelessWidget {
                     _CheckMark(selected: selected),
                   ],
                 ),
-                if (description != null && description.isNotEmpty) ...[
+                if ((description != null && description.isNotEmpty) || latency != null) ...[
                   const SizedBox(height: 2),
-                  Text(
-                    description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(color: dsh.textTertiary),
+                  Row(
+                    children: [
+                      if (description != null && description.isNotEmpty)
+                        Expanded(
+                          child: Text(
+                            description,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(color: dsh.textTertiary),
+                          ),
+                        )
+                      else
+                        const Spacer(),
+                      if (latency case final ms?) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          ms > 0 ? '$ms ms' : '失败',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: ms > 0 ? dsh.textSecondary : dsh.textTertiary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ],
