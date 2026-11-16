@@ -1040,7 +1040,7 @@ class _ModelCard extends StatelessWidget {
                         Text(
                           ms > 0 ? '$ms ms' : '失败',
                           style: theme.textTheme.labelSmall?.copyWith(
-                            color: ms > 0 ? dsh.textSecondary : dsh.textTertiary,
+                            color: ms > 0 ? colors.onSurfaceVariant : dsh.textTertiary,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
