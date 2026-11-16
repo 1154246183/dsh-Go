@@ -28,6 +28,7 @@ import '../appearance/appearance_page.dart';
 import '../background_guide_page.dart';
 import '../diagnostics_page.dart';
 import '../interface_page.dart';
+import '../github_build_page.dart';
 import '../media_settings_page.dart';
 import '../notification_settings.dart';
 import '../performance_page.dart';
@@ -70,6 +71,7 @@ Widget settingsPage(SettingsPageId id, {String? sessionId}) => switch (id) {
   SettingsPageId.media => const MediaSettingsPage(),
   SettingsPageId.pluginInventory => const PluginInventoryPage(),
   SettingsPageId.plugins => const PluginsScreen(),
+  SettingsPageId.githubBuild => const GitHubBuildAccountsPage(),
   SettingsPageId.allFeatures => const AllFeaturesPage(),
   SettingsPageId.account => const AccountPage(),
   SettingsPageId.remote => const RemoteScreen(),

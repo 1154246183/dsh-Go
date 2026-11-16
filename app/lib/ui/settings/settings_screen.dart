@@ -29,6 +29,7 @@ import '../common/search_capsule.dart';
 import '../common/status_chip.dart';
 import '../engine/engine_screen.dart';
 import '../engine/engine_status.dart';
+import '../github_build_page.dart';
 import '../engine_settings/engine_settings_hub.dart';
 import '../engine_settings/web_search_page.dart';
 import 'media_settings_page.dart';
@@ -204,6 +205,12 @@ class SettingsScreen extends ConsumerWidget {
             ),
             // The plugins' own settings sections, when the host has any.
             ...pluginSettingsTiles(ref, tint: SettingsHues.abilities),
+            SettingsTile(
+              icon: AppIcons.code,
+              tint: SettingsHues.abilities,
+              spot: SettingsIndex.entry(SettingsPageId.githubBuild),
+              onTap: () => _push(context, const GitHubBuildAccountsPage()),
+            ),
           ],
         ),
         SettingsSection(

@@ -70,6 +70,7 @@ enum SettingsPageId {
   webSearch,
   media,
   plugins,
+  githubBuild,
   appearance,
   pets,
   interface,
@@ -428,6 +429,15 @@ final _pages = <SettingsPageMeta>[
     keywords: (l) => l.searchKwPlugins,
     freq: Freq.medium,
     links: const ['plugins'],
+  ),
+  // 让会话用你填的账号去 GitHub 跑构建（两个密钥槽，Keychain 存）。
+  SettingsPageMeta(
+    SettingsPageId.githubBuild,
+    title: (l) => l.githubBuildTitle,
+    group: _abilities,
+    keywords: (l) => l.githubBuildTitle,
+    freq: Freq.low,
+    links: const ['github-build', 'github'],
   ),
   // 外观
   SettingsPageMeta(

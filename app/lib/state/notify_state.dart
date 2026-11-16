@@ -210,6 +210,13 @@ enum AlertDelivery { none, banner, pet, system }
 /// System notification in the background, a banner in the foreground — or
 /// the pet's bubble when it is on screen ([petOnScreen]: one reminder, not
 /// two) — and nothing for the conversation already on screen.
+///
+/// The one exception is a turn that **finished**: the person is usually sitting
+/// in that very conversation when it ends, so「看着的对话不提示」silenced the
+/// completion cue in exactly the case it exists for. A finished turn therefore
+/// still gets its banner (and the chime) in the conversation on screen; requests
+/// that wait on the person keep the old rule, since their prompt is already in
+/// the transcript right in front of them.
 AlertDelivery deliveryFor(
   ChatAlert alert, {
   required NotifyPrefs prefs,
@@ -218,9 +225,13 @@ AlertDelivery deliveryFor(
   bool petOnScreen = false,
 }) {
   if (!prefs.allows(alert.kind)) return AlertDelivery.none;
-  if (viewed != null && viewed.host == alert.host && viewed.sessionId == alert.sessionId) return AlertDelivery.none;
+  final watching = viewed != null && viewed.host == alert.host && viewed.sessionId == alert.sessionId;
+  if (watching && alert.kind != AlertKind.done) return AlertDelivery.none;
   if (!foreground) return AlertDelivery.system;
-  return petOnScreen ? AlertDelivery.pet : AlertDelivery.banner;
+  // A finished turn outranks the pet's bubble: the bubble is where an approval
+  // or a question waits, the banner is how a person notices work is over.
+  if (petOnScreen && alert.kind != AlertKind.done) return AlertDelivery.pet;
+  return AlertDelivery.banner;
 }
 
 NotifyPost postFor(ChatAlert alert) => NotifyPost(
