@@ -11,7 +11,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
-import '../../state/connection_state.dart';
+import '../../state/read_list_identity.dart';
 import '../../state/models_state.dart';
 import '../../state/settings_state.dart';
 import '../common/app_sheet.dart';

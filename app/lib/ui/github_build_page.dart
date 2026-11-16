@@ -13,7 +13,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../shell/page_frame.dart';
+import 'shell/page_frame.dart';
 import '../state/github_accounts.dart';
 import 'theme/app_icons.dart';
 import 'theme/theme.dart';
