@@ -162,5 +162,4 @@ final githubAccountsListProvider = FutureProvider<List<GitHubAccount>>(
 );
 
 /// 会话能看到的摘要（无密钥）。没有账户时返回空列表。
-Future<List<GitHubAccountSummary>> githubBuildAccounts() =>
-    const GitHubAccounts().summaries();
+Future<List<GitHubAccountSummary>> githubBuildAccounts() => GitHubAccounts().summaries();
