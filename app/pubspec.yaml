@@ -154,6 +154,9 @@ flutter:
     - assets/skills/dsh-go-plugin/
     - assets/skills/dsh-go-guide/
     - assets/skills/dsh-go-support/
+    # 每回合正常结束时的提示音（lib/ui/common/completion_chime.dart），跟着
+    # App 一起打包，由原生 AVAudioPlayer 播放。
+    - assets/sounds/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

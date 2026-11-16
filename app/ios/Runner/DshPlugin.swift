@@ -1,3 +1,4 @@
+import AVFoundation
 import Flutter
 import PDFKit
 import Photos
@@ -144,9 +145,50 @@ private final class AppChannel {
       // 于是后台完成时的通知永远发不出去。这里直接问 SpringBoard。
       case "frontmostBundleID":
         result(IOSPhoneCoreDevice.frontmostBundleID() ?? NSNull())
+      // 任务完成的提示音：App 自带的那段（assets/sounds/dsh-chime.wav），
+      // 由 Dart 读成字节发来这里播放。走 AVAudioPlayer 而不是
+      // AudioServicesPlaySystemSound，是因为后者只能用系统音，自定义音频必须
+      // 自己持有 player；播放器保存在静态属性里，否则播放会被立刻回收。
+      case "playChime":
+        guard let typed = arguments(call)["bytes"] as? FlutterStandardTypedData else {
+          return result(FlutterError(code: "invalid", message: "no audio", details: nil))
+        }
+        ChimePlayer.shared.play(typed.data, result: result)
       default: result(FlutterMethodNotImplemented)
       }
     }
+  }
+}
+
+// MARK: - 完成提示音
+
+/// One short cue for a finished turn. It plays under whatever session the app
+/// already has (IOSAudioSessionCoordinator owns the explicit setters) and never
+/// reconfigures it: a notification cue must not preempt the companion's speech
+/// or a recording. The player is held here for the length of the sound — a
+/// local AVAudioPlayer is deallocated, and goes silent, the moment it escapes.
+private final class ChimePlayer: NSObject, AVAudioPlayerDelegate {
+  static let shared = ChimePlayer()
+
+  private var player: AVAudioPlayer?
+
+  func play(_ data: Data, result: @escaping FlutterResult) {
+    do {
+      let player = try AVAudioPlayer(data: data)
+      player.delegate = self
+      player.volume = 1
+      player.prepareToPlay()
+      player.play()
+      self.player = player
+      result(nil)
+    } catch {
+      // 没有声音是小事：不要让它变成一次失败的工具调用。
+      result(FlutterError(code: "failed", message: error.localizedDescription, details: nil))
+    }
+  }
+
+  func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+    if self.player === player { self.player = nil }
   }
 }
 

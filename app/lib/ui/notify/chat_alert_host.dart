@@ -9,13 +9,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../notify/chat_alerts.dart' show AlertKind;
 import '../../state/connection_state.dart';
 import '../../state/hosts_state.dart';
 import '../../state/notify_state.dart';
 import '../bots/bot_alerts.dart';
+import '../common/completion_chime.dart';
 import '../common/discard_guard.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
+
+/// The completion cue, one instance for the whole app.
+final completionChimeProvider = Provider<CompletionChime>((_) => CompletionChime());
 
 /// Put it once inside the home route (the home shell does). It keeps the
 /// alert controller alive, feeds it the app lifecycle and whether the chat is
@@ -170,6 +175,21 @@ class _AlertBannerLayerState extends ConsumerState<AlertBannerLayer> {
     }
   }
 
+  /// 一条新横幅：计时（[_arm]）＋ 完成提示音。
+  ///
+  /// 只在「回合正常结束」时响，并且只在它真的变成一条横幅时响：同一条告警
+  /// 被重复投递（换主机重连、横幅被点开后又回来）不该再响一次，故比较对象
+  /// 是前后两条告警而不是音量。没看这个对话才会有横幅，所以人在对话里看着
+  /// 回合一字一字打完时不会被打断。
+  void _onAlert(ChatAlert? previous, ChatAlert? next) {
+    _arm(next);
+    if (next == null || next.kind != AlertKind.done) return;
+    if (previous != null && previous.kind == next.kind && previous.key == next.key && previous.sessionId == next.sessionId) {
+      return;
+    }
+    unawaited(ref.read(completionChimeProvider).play());
+  }
+
   Future<void> _open(ChatAlert alert) async {
     if (!await DiscardGuard.confirmLeave(context) || !mounted) return;
     HapticFeedback.selectionClick();
@@ -187,7 +207,7 @@ class _AlertBannerLayerState extends ConsumerState<AlertBannerLayer> {
       _accessibleNavigation = accessible;
       _arm(ref.read(chatAlertsProvider));
     }
-    ref.listen(chatAlertsProvider, (_, next) => _arm(next));
+    ref.listen(chatAlertsProvider, (previous, next) => _onAlert(previous, next));
     final alert = ref.watch(chatAlertsProvider);
     final activeHost = ref.watch(activeHostProvider);
     final hostName = alert == null || alert.host == activeHost
