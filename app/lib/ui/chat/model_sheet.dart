@@ -11,6 +11,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
+import '../../state/connection_state.dart';
 import '../../state/models_state.dart';
 import '../../state/settings_state.dart';
 import '../common/app_sheet.dart';
@@ -441,6 +442,59 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
   /// Closes the sheet once the effort thumb has landed.
   Timer? _close;
 
+  /// 批量测速结果：渠道 id → 一次网络往返的毫秒数（null 表示这次失败）。
+  final Map<String, int?> _probeMs = {};
+  bool _probing = false;
+  bool _probeBlocked = false;
+
+  /// 逐个渠道走一次 `llm/discoverModels`（引擎侧 GET {baseURL}/models），
+  /// 量的是真实往返：建连 + 鉴权 + 响应，用的还是引擎里已存的密钥。
+  /// 串行跑，免得并发抢带宽把数字压歪。
+  Future<void> _probeChannels(List<ProviderGroup> groups) async {
+    if (_probing || groups.isEmpty) return;
+    final conn = ref.read(readListLiveConnectionProvider);
+    if (conn == null) {
+      setState(() {
+        _probeBlocked = true;
+        _probeMs.clear();
+      });
+      return;
+    }
+    setState(() {
+      _probing = true;
+      _probeBlocked = false;
+      _probeMs.clear();
+    });
+    for (final group in groups) {
+      final watch = Stopwatch()..start();
+      int? ms;
+      try {
+        await conn.client.discoverModels(provider: group.id, timeout: const Duration(seconds: 20));
+        ms = watch.elapsedMilliseconds;
+      } on Object {
+        ms = null;
+      }
+      watch.stop();
+      if (!mounted) return;
+      setState(() => _probeMs[group.id] = ms);
+    }
+    if (mounted) setState(() => _probing = false);
+  }
+
+  /// 一行测速结果：`DeepSeek 320 ms · Our Free Model 810 ms`。
+  Widget _probeSummary(List<ProviderGroup> groups) {
+    final theme = Theme.of(context);
+    final dsh = DshColors.of(context);
+    final style = theme.textTheme.labelSmall?.copyWith(color: dsh.textTertiary);
+    if (_probeBlocked) return Text('没有连上引擎', style: style);
+    final parts = [
+      for (final g in groups)
+        if (_probeMs.containsKey(g.id)) '${g.name} ${_probeMs[g.id] == null ? '失败' : '${_probeMs[g.id]} ms'}',
+    ];
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Text(parts.join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis, style: style);
+  }
+
   @override
   void dispose() {
     _close?.cancel();
@@ -591,6 +645,22 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
           )
         else
           SheetSectionLabel(shown.name),
+        // 批量测速：一次把所有渠道的往返时间量出来，数字就写在左边。
+        Padding(
+          padding: const EdgeInsets.fromLTRB(inset, 0, inset, 10),
+          child: Row(
+            children: [
+              Expanded(child: _probeSummary(groups)),
+              TextButton.icon(
+                onPressed: _probing ? null : () => _probeChannels(groups),
+                icon: _probing
+                    ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(AppIcons.refresh, size: 16),
+                label: Text(_probing ? '测速中' : '批量测速'),
+              ),
+            ],
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: inset),
           child: SmoothSize(

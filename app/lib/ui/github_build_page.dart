@@ -13,6 +13,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../shell/page_frame.dart';
 import '../state/github_accounts.dart';
 import 'theme/app_icons.dart';
 import 'theme/theme.dart';
@@ -112,16 +113,20 @@ class _GitHubBuildAccountsPageState extends ConsumerState<GitHubBuildAccountsPag
   @override
   Widget build(BuildContext context) {
     final colors = DshColors.of(context);
+    // 键盘弹起时补一块底部留白，密钥框才能滚到键盘上方，不被挡住。
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     if (_loading) {
-      return const SettingsSection(
+      return AppPage.list(
         title: 'GitHub 构建',
-        children: [Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))],
+        children: const [
+          Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+        ],
       );
     }
-    return Column(
+    return AppPage.list(
+      title: 'GitHub 构建',
       children: [
         SettingsSection(
-          title: 'GitHub 构建',
           children: [
             SettingsTile(
               icon: AppIcons.terminal,
@@ -150,6 +155,8 @@ class _GitHubBuildAccountsPageState extends ConsumerState<GitHubBuildAccountsPag
             ),
           ],
         ),
+        // 键盘高度 + 一点余量：最后那个输入框（密钥）能滚到键盘上方。
+        SizedBox(height: keyboard > 0 ? keyboard + 24 : 0),
       ],
     );
   }
