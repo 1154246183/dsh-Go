@@ -9,10 +9,8 @@
 // 无障碍朗读里多一次泄漏机会。
 
 import 'dart:async';
-import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/github_accounts.dart';
