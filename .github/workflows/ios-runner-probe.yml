@@ -1,0 +1,17 @@
+name: ios-runner-probe
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: macos-14
+    steps:
+      - name: 环境
+        run: |
+          sw_vers
+          xcodebuild -version
+          uname -m
+          df -h /
+      - name: Flutter
+        run: |
+          git clone --depth 1 --branch 3.47.7 https://github.com/flutter/flutter.git "$HOME/flutter" || echo "clone failed"
+          "$HOME/flutter/bin/flutter" --version || true
