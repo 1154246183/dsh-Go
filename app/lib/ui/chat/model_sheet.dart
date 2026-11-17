@@ -11,7 +11,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
-import '../../state/read_list_identity.dart';
+import '../../state/model_probe.dart';
 import '../../state/models_state.dart';
 import '../../state/settings_state.dart';
 import '../common/app_sheet.dart';
@@ -442,93 +442,23 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
   /// Closes the sheet once the effort thumb has landed.
   Timer? _close;
 
-  /// 批量测速结果：`provider\u0000model` → 首字毫秒（-1 表示这次失败）。
-  final Map<String, int> _probeMs = {};
-  bool _probing = false;
-  int _probed = 0;
-  int _probeTotal = 0;
+  /// 测速状态归 provider 管：面板关掉也继续跑，回来还能看到结果。
+  ModelProbeState get _probe => ref.watch(modelProbeProvider);
 
-  static String _probeKey(String provider, String model) => '$provider\u0000$model';
-
-  /// 逐个数着测：开一个临时会话、选上这个模型、发一句话，
-  /// 量到第一个输出分片（[AssistantChunkEvent]）为止——这才是用户
-  /// 真正感觉到的"发了多久才动"。测完取消并删掉临时会话。
-  /// 串行跑，免得并发抢带宽把数字压小。
-  Future<void> _probeModels(List<ModelInfo> models) async {
-    if (_probing || models.isEmpty) return;
-    final conn = ref.read(readListLiveConnectionProvider);
-    if (conn == null) return;
-    setState(() {
-      _probing = true;
-      _probed = 0;
-      _probeTotal = models.length;
-      _probeMs.clear();
-    });
-    final restore = _selection;
-    for (final model in models) {
-      var ms = -1;
-      String? scratch;
-      StreamSubscription<DshEvent>? sub;
-      try {
-        scratch = (await conn.client.createSession()).sessionId;
-        final firstOutput = Completer<void>();
-        final watch = Stopwatch()..start();
-        sub = conn.client.watch(scratch).listen((event) {
-          if (!firstOutput.isCompleted && event is AssistantChunkEvent) {
-            ms = watch.elapsedMilliseconds;
-            firstOutput.complete();
-          }
-        });
-        await conn.client.setModel(scratch, provider: model.provider, model: model.id);
-        await conn.client.prompt(scratch, '你好');
-        await firstOutput.future.timeout(const Duration(seconds: 30));
-      } on Object {
-        ms = -1;
-      }
-      await sub?.cancel();
-      if (scratch != null) {
-        try {
-          await conn.client.cancel(scratch);
-          await conn.client.deleteSessionPermanently(scratch);
-        } on Object {
-          // 临时会话收拾不干净也不影响测出来的数
-        }
-      }
-      if (!mounted) return;
-      setState(() {
-        _probeMs[_probeKey(model.provider, model.id)] = ms;
-        _probed += 1;
-      });
-    }
-    // 选模型会顺带改掉"下次新会话用什么"，测完把原来的选回去。
-    if (restore != null) {
-      String? scratch;
-      try {
-        scratch = (await conn.client.createSession()).sessionId;
-        await conn.client.setModel(
-          scratch,
-          provider: restore.provider,
-          model: restore.model,
-          reasoningEffort: restore.reasoningEffort,
-        );
-        await conn.client.deleteSessionPermanently(scratch);
-      } on Object {
-        // 恢复失败不改结果
-      }
-    }
-    if (mounted) setState(() => _probing = false);
-  }
-
-  /// 进度或一句结果：`测速中 3/13`。
+  /// 进度或一句结果：`测速中 3/43`、`可用 5 个 · 最快 385 ms · 不可用 8 个`。
   Widget _probeStatus() {
     final theme = Theme.of(context);
     final dsh = DshColors.of(context);
     final style = theme.textTheme.labelSmall?.copyWith(color: dsh.textTertiary);
-    if (_probing) return Text('测速中 $_probed/$_probeTotal', style: style);
-    if (_probeMs.isEmpty) return Text('点右边逐个量首字延迟', style: style);
-    final best = _probeMs.entries.where((e) => e.value > 0).map((e) => e.value);
-    if (best.isEmpty) return Text('这批都没测通', style: style);
-    return Text('最快 ${best.reduce((a, b) => a < b ? a : b)} ms · 共 $_probed 个', style: style);
+    final probe = _probe;
+    if (probe.running) return Text('测速中 ${probe.done}/${probe.total}', style: style);
+    if (probe.results.isEmpty) return Text('逐个发一句话，验能不能真答上来', style: style);
+    final fastest = probe.fastestMs;
+    if (fastest == null) return Text('这批都答不了（${probe.badCount} 个）', style: style);
+    return Text(
+      '可用 ${probe.goodCount} 个 · 最快 $fastest ms · 不可用 ${probe.badCount} 个',
+      style: style,
+    );
   }
 
   @override
@@ -681,19 +611,24 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
           )
         else
           SheetSectionLabel(shown.name),
-        // 批量测速：一次把所有渠道的往返时间量出来，数字就写在左边。
+        // 批量测速：逐个发一句话，等回合结束才判定能不能用。
         Padding(
           padding: const EdgeInsets.fromLTRB(inset, 0, inset, 10),
           child: Row(
             children: [
               Expanded(child: _probeStatus()),
-              TextButton.icon(
-                onPressed: _probing ? null : () => _probeModels(shown.models),
-                icon: _probing
-                    ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(AppIcons.refresh, size: 16),
-                label: Text(_probing ? '测速中 $_probed/$_probeTotal' : '批量测速'),
-              ),
+              if (_probe.running)
+                TextButton.icon(
+                  onPressed: () => ref.read(modelProbeProvider.notifier).stop(),
+                  icon: const Icon(AppIcons.stop, size: 16),
+                  label: const Text('停止'),
+                )
+              else
+                TextButton.icon(
+                  onPressed: () => ref.read(modelProbeProvider.notifier).run(shown.models),
+                  icon: const Icon(AppIcons.refresh, size: 16),
+                  label: const Text('批量测速'),
+                ),
             ],
           ),
         ),
@@ -713,7 +648,7 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
                 key: ValueKey(shown.id),
                 models: shown.models,
                 selected: selected,
-                latency: _probeMs,
+                latency: _probe,
                 onPick: readOnly ? null : _pickModel,
               ),
             ),
@@ -899,15 +834,15 @@ class _ModelGrid extends StatelessWidget {
     required this.models,
     required this.selected,
     required this.onPick,
-    this.latency = const {},
+    this.latency = const ModelProbeState.idle(),
   });
 
   final List<ModelInfo> models;
   final ModelInfo? selected;
   final ValueChanged<ModelInfo>? onPick;
 
-  /// 测速结果，键是 `provider\u0000model`；没有就是还没测。
-  final Map<String, int> latency;
+  /// 测速结论，键是 `provider\u0000model`；没有就是还没测。
+  final ModelProbeState latency;
 
   static const gap = 12.0;
 
@@ -917,7 +852,7 @@ class _ModelGrid extends StatelessWidget {
       key: ValueKey('${model.provider}\u0000${model.id}'),
       model: model,
       selected: selected?.id == model.id && selected?.provider == model.provider,
-      latency: latency[_ModelSheetState._probeKey(model.provider, model.id)],
+      latency: latency.of(model.provider, model.id),
       onTap: onPick == null ? null : () => onPick!(model),
     );
     return Column(
@@ -955,7 +890,8 @@ class _ModelCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   /// 首字延迟毫秒；-1 是测过但没通过，null 是还没测。
-  final int? latency;
+  /// 测速结论；null 是还没测。
+  final ModelProbe? latency;
 
   static const radius = BorderRadius.all(Radius.circular(AppShape.lg));
 
@@ -978,24 +914,30 @@ class _ModelCard extends StatelessWidget {
       excludeSemantics: true,
       child: Pressable(
         onTap: onTap,
-        child: GlassSurface(
-          tier: GlassTier.card,
-          borderRadius: radius,
-          child: AnimatedContainer(
-            duration: duration,
-            curve: AppMotion.std,
-            padding: const EdgeInsets.all(16),
-            decoration: ShapeDecoration(
-              color: selected
-                  ? colors.primary.withValues(alpha: dark ? 0.14 : 0.07)
-                  : colors.primary.withValues(alpha: 0),
-              shape: RoundedSuperellipseBorder(
-                borderRadius: radius,
-                side: BorderSide(
-                  color: selected
-                      ? colors.primary.withValues(alpha: dark ? 0.7 : 0.55)
-                      : colors.primary.withValues(alpha: 0),
-                  width: 1.5,
+        // 测出答不了的，整张卡压暗并加一道红边：一眼能跳过它，不必读徽标。
+        child: Opacity(
+          opacity: latency != null && !latency!.ok ? 0.55 : 1,
+          child: GlassSurface(
+            tier: GlassTier.card,
+            borderRadius: radius,
+            child: AnimatedContainer(
+              duration: duration,
+              curve: AppMotion.std,
+              padding: const EdgeInsets.all(16),
+              decoration: ShapeDecoration(
+                color: selected
+                    ? colors.primary.withValues(alpha: dark ? 0.14 : 0.07)
+                    : colors.primary.withValues(alpha: 0),
+                shape: RoundedSuperellipseBorder(
+                  borderRadius: radius,
+                  side: BorderSide(
+                    color: selected
+                        ? colors.primary.withValues(alpha: dark ? 0.7 : 0.55)
+                        : latency != null && !latency!.ok
+                        ? dsh.danger.withValues(alpha: dark ? 0.5 : 0.4)
+                        : colors.primary.withValues(alpha: 0),
+                    width: 1.5,
+                  ),
                 ),
               ),
             ),
@@ -1035,15 +977,10 @@ class _ModelCard extends StatelessWidget {
                         )
                       else
                         const Spacer(),
-                      if (latency case final ms?) ...[
+                      // 测过就换成结论徽标：绿点=能答，红点=答不了（带原因）。
+                      if (latency case final probe?) ...[
                         const SizedBox(width: 6),
-                        Text(
-                          ms > 0 ? '$ms ms' : '失败',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: ms > 0 ? colors.onSurfaceVariant : dsh.textTertiary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        _ProbeBadge(probe: probe),
                       ],
                     ],
                   ),
@@ -1051,6 +988,42 @@ class _ModelCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    ),
+    );
+  }
+}
+
+/// 卡片右下角的结论徽标：绿底对勾 + 延迟，或红底叹号 + 原因。
+class _ProbeBadge extends StatelessWidget {
+  const _ProbeBadge({required this.probe});
+
+  final ModelProbe probe;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dsh = DshColors.of(context);
+    final tone = probe.ok ? dsh.success : dsh.danger;
+    return Tooltip(
+      message: probe.ok ? '能回答，首字 ${probe.ms} ms' : '答不了：${probe.detail.isEmpty ? probe.label : probe.detail}',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: ShapeDecoration(
+          color: tone.withValues(alpha: 0.14),
+          shape: const StadiumBorder(),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(probe.ok ? AppIcons.done : AppIcons.warning, size: 11, color: tone),
+            const SizedBox(width: 3),
+            Text(
+              probe.label,
+              style: theme.textTheme.labelSmall?.copyWith(color: tone, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
       ),
     );
