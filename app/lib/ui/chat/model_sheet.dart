@@ -940,7 +940,6 @@ class _ModelCard extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -990,7 +989,6 @@ class _ModelCard extends StatelessWidget {
           ),
         ),
       ),
-    ),
     );
   }
 }
