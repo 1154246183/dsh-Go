@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'connection_state.dart';
 import 'read_list_identity.dart';
@@ -36,6 +38,16 @@ class ModelProbe {
       _ => '不可用',
     };
   }
+
+  Map<String, Object?> toJson() => {'ok': ok, 'ms': ms, 'code': code, 'detail': detail};
+
+  static ModelProbe? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final ok = json['ok'] == true;
+    final ms = json['ms'];
+    if (ok) return ModelProbe.ok(ms is int ? ms : 0);
+    return ModelProbe.failed(json['code'] as String? ?? 'FAILED', json['detail'] as String? ?? '');
+  }
 }
 
 /// `provider\u0000model`，一次探测的键。
@@ -48,8 +60,46 @@ String modelProbeKey(String provider, String model) => '$provider\u0000$model';
 /// 失败、会话也没人收拾。这里归 Riverpod 管：面板关掉不影响它跑完，
 /// 再打开面板还能看到已经测出来的那部分。
 class ModelProbeController extends Notifier<ModelProbeState> {
+  /// 上次的结果存在这里，重开 App 还在。
+  static const prefsKey = 'model_probe_results_v1';
+
   @override
-  ModelProbeState build() => const ModelProbeState.idle();
+  ModelProbeState build() {
+    // 先给空态，再把存过的那份读回来（读是异步的，回来再替换）。
+    unawaited(_restore());
+    return const ModelProbeState.idle();
+  }
+
+  Future<void> _restore() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(prefsKey);
+      if (raw == null) return;
+      final parsed = jsonDecode(raw);
+      if (parsed is! Map) return;
+      final results = <String, ModelProbe>{};
+      for (final entry in parsed.entries) {
+        final probe = ModelProbe.fromJson(entry.value);
+        if (probe != null) results[entry.key as String] = probe;
+      }
+      if (results.isEmpty) return;
+      state = ModelProbeState(results: results, done: results.length, total: results.length);
+    } on Object {
+      // 没有偏好后端或存档损坏：当作没测过
+    }
+  }
+
+  Future<void> _persist(ModelProbeState next) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        prefsKey,
+        jsonEncode({for (final e in next.results.entries) e.key: e.value.toJson()}),
+      );
+    } on Object {
+      // 存不下不影响界面上的结果
+    }
+  }
 
   bool _running = false;
 
@@ -64,6 +114,18 @@ class ModelProbeController extends Notifier<ModelProbeState> {
     state = state.copyWith(running: false);
   }
 
+  /// 丢掉存下来的全部结果。
+  Future<void> clear() async {
+    if (_running) return;
+    state = const ModelProbeState.idle();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(prefsKey);
+    } on Object {
+      // 清不掉也会先把界面清空
+    }
+  }
+
   /// 逐个试 [models]：开临时会话、选中模型、发「你好」，**等到回合结束**
   /// 才下结论。只等第一个分片会误判——上游常在吐了开头之后才报错。
   Future<void> run(List<ModelInfo> models) async {
@@ -72,13 +134,18 @@ class ModelProbeController extends Notifier<ModelProbeState> {
     if (conn == null) return;
     _running = true;
     _stopped = false;
-    state = ModelProbeState(total: models.length);
+    // 这一轮要测的这些模型，先把旧结论清掉，免得新旧混在一起看不出是这次测的。
+    final cleared = {...state.results}..removeWhere(
+      (key, _) => models.any((m) => modelProbeKey(m.provider, m.id) == key),
+    );
+    state = ModelProbeState(results: cleared, running: true, total: models.length);
 
     for (final model in models) {
       if (_stopped || !ref.mounted) break;
       final probe = await _probeOne(conn, model);
       if (!ref.mounted) break;
       state = state.withResult(model.provider, model.id, probe);
+      unawaited(_persist(state));
     }
 
     _running = false;

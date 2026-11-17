@@ -611,7 +611,7 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
           )
         else
           SheetSectionLabel(shown.name),
-        // 批量测速：逐个发一句话，等回合结束才判定能不能用。
+        // 批量测速：逐个发一句话，等回合结束才判定能不能用。结果会存下来。
         Padding(
           padding: const EdgeInsets.fromLTRB(inset, 0, inset, 10),
           child: Row(
@@ -623,12 +623,18 @@ class _ModelSheetState extends ConsumerState<_ModelSheet> {
                   icon: const Icon(AppIcons.stop, size: 16),
                   label: const Text('停止'),
                 )
-              else
+              else ...[
+                if (_probe.results.isNotEmpty)
+                  TextButton(
+                    onPressed: () => ref.read(modelProbeProvider.notifier).clear(),
+                    child: const Text('清除'),
+                  ),
                 TextButton.icon(
                   onPressed: () => ref.read(modelProbeProvider.notifier).run(shown.models),
                   icon: const Icon(AppIcons.refresh, size: 16),
                   label: const Text('批量测速'),
                 ),
+              ],
             ],
           ),
         ),
