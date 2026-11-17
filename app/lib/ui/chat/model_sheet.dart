@@ -940,51 +940,52 @@ class _ModelCard extends StatelessWidget {
                   ),
                 ),
               ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Row(
-                  children: [
-                    // 14 / two lines: the row leaves the name ~109 dp on a
-                    // 390 dp phone, so "GPT 5.6 Terra" at titleMedium's 16 was
-                    // cut after the first words.
-                    Expanded(
-                      child: Text(
-                        name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(height: 1.35),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _CheckMark(selected: selected),
-                  ],
-                ),
-                if ((description != null && description.isNotEmpty) || latency != null) ...[
-                  const SizedBox(height: 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
                   Row(
                     children: [
-                      if (description != null && description.isNotEmpty)
-                        Expanded(
-                          child: Text(
-                            description,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(color: dsh.textTertiary),
-                          ),
-                        )
-                      else
-                        const Spacer(),
-                      // 测过就换成结论徽标：绿点=能答，红点=答不了（带原因）。
-                      if (latency case final probe?) ...[
-                        const SizedBox(width: 6),
-                        _ProbeBadge(probe: probe),
-                      ],
+                      // 14 / two lines: the row leaves the name ~109 dp on a
+                      // 390 dp phone, so "GPT 5.6 Terra" at titleMedium's 16 was
+                      // cut after the first words.
+                      Expanded(
+                        child: Text(
+                          name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(height: 1.35),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _CheckMark(selected: selected),
                     ],
                   ),
+                  if ((description != null && description.isNotEmpty) || latency != null) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        if (description != null && description.isNotEmpty)
+                          Expanded(
+                            child: Text(
+                              description,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(color: dsh.textTertiary),
+                            ),
+                          )
+                        else
+                          const Spacer(),
+                        // 测过就换成结论徽标：绿=能答，红=答不了（带原因）。
+                        if (latency case final probe?) ...[
+                          const SizedBox(width: 6),
+                          _ProbeBadge(probe: probe),
+                        ],
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
