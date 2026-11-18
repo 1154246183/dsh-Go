@@ -1209,7 +1209,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
         gapBefore: _gapBefore,
       ),
       NoticeRowData(:final item) => NoticeRow(item: item, action: _noticeAction(item)),
-      ChangeCardRow(:final files) => ChangeCard(files: files),
+      ChangeCardRow(:final files) => ChangeCard(files: files, sessionId: widget.sessionId),
       ArtifactCardRow(:final group) => ArtifactCard(sessionId: widget.sessionId, group: group),
       CommandNoticeRow(:final notice) => CommandRow(notice: notice),
       ApprovalRow(:final request) => ApprovalCard(request: request, onRespond: _respond, onAllowAll: _allowAll),

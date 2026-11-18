@@ -21,7 +21,7 @@ import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
 import '../artifact_preview.dart';
 import '../../common/expand_reveal.dart';
-import 'change_card.dart' show copyPath, openInFilza;
+import 'change_card.dart' show copyPath;
 import 'chat_card.dart';
 
 /// 一轮结束时的**产物卡**:这一轮交付(`present`)或生成的文件。
@@ -222,7 +222,13 @@ class _ArtifactTileState extends ConsumerState<ArtifactTile> {
       case ArtifactAction.save:
         await _save();
       case ArtifactAction.filza:
-        await openInFilza(context, _artifact.path);
+        await runArtifactAction(
+          context,
+          ref,
+          sessionId: widget.sessionId,
+          artifact: _artifact,
+          action: ArtifactAction.filza,
+        );
       case ArtifactAction.copyPath:
         if (mounted) await copyPath(context, _artifact.path);
     }
@@ -514,7 +520,9 @@ Future<ArtifactAction?> showArtifactMenu(
         if (canFetch && artifactPreviewable(artifact, officeToPdf: officeToPdf)) ArtifactAction.preview,
         if (canFetch) ...[ArtifactAction.open, ArtifactAction.openWith, ArtifactAction.share],
         if (canFetch && !artifact.inPhoneDownloads) ArtifactAction.save,
-        if (canFetch && wordsForIos && artifact.path.startsWith('/')) ArtifactAction.filza,
+        // 工作区里的文件往往是相对路径，绝对化交给 runArtifactAction；
+        // 这里只在 iOS 上给入口，不再要求 path 已经是绝对路径。
+        if (canFetch && wordsForIos) ArtifactAction.filza,
         ArtifactAction.copyPath,
       ];
       return SafeArea(

@@ -24,15 +24,18 @@ import '../../common/brief_notice.dart';
 ///
 /// 最多列 [shownCount] 个文件;点文件直接打开那个文件,点底栏从第一个看起。
 class ChangeCard extends StatelessWidget {
-  const ChangeCard({super.key, required this.files});
+  const ChangeCard({super.key, required this.files, this.sessionId});
 
   final List<FileChange> files;
+
+  /// 这一轮所在会话：改动详情页据此把相对路径换成绝对路径，好在 Filza 里直达。
+  final String? sessionId;
 
   /// 卡片上最多列几个文件。
   static const shownCount = 3;
 
   void _open(BuildContext context, int index) {
-    Navigator.of(context).push(ChangeDiffPage.route(files, initialIndex: index));
+    Navigator.of(context).push(ChangeDiffPage.route(files, initialIndex: index, sessionId: sessionId));
   }
 
   @override
@@ -175,27 +178,34 @@ Future<void> copyPath(BuildContext context, String path) async {
 
 /// 在 Filza 里直达 [path]（越狱机才有 Filza；没有就退回复制路径）。
 ///
-/// Filza 4.x 的 scheme 是 `filza://view/<绝对路径>`，
-/// 路径开头的 `/` 不重复：`filza://view/var/mobile/x`。
+/// 实测（Filza 4.x / iOS 15 rootless）：
+/// - `filza:///<绝对路径>` 直达并高亮目标，是唯一真正“跳过去”的写法；
+/// - `filza://view/<绝对路径>` 只会把 Filza 唤起停在首页；
+/// - 所以按 直达 → 旧写法 → 只唤起 → 「文件」App 的顺序试，全失败才复制路径。
 Future<void> openInFilza(BuildContext context, String path) async {
   final l10n = context.l10n;
   final messenger = ScaffoldMessenger.maybeOf(context);
-  final target = path.startsWith('/') ? path.substring(1) : path;
-  final url = Uri.parse('filza://view/$target');
-  // 自定义 scheme 在 iOS 上不走 canLaunchUrl（那要先在 Info.plist 的
-  // LSApplicationQueriesSchemes 里声明），直接交给系统打开；
-  // launchUrl 返回 false 或抛异常就说明没装 Filza。
-  var opened = false;
-  try {
-    opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-  } catch (_) {
-    opened = false;
-  }
-  if (opened) {
-    HapticFeedback.selectionClick();
-    return;
+  final abs = path.startsWith('/') ? path : '/$path';
+  final bare = abs.substring(1);
+  final uris = <Uri>[
+    Uri.parse('filza://$abs'), // filza:///var/mobile/… 直达
+    Uri.parse('filza://view/$bare'), // 兜底：只唤起
+    Uri.parse('filza://'),
+    Uri.parse('shareddocuments://$abs'), // 没装 Filza 时交给「文件」
+  ];
+  for (final uri in uris) {
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      opened = false;
+    }
+    if (opened) {
+      HapticFeedback.selectionClick();
+      return;
+    }
   }
   // 没装 Filza 或者系统不让跳：退回复制路径，至少还能自己去粘贴。
-  await copyPath(context, path);
+  await copyPath(context, abs);
   messenger?.showBriefNotice(l10n.chatFilzaUnavailable);
 }

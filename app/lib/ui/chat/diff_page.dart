@@ -6,8 +6,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
+import '../../state/workspace_state.dart';
 import '../common/side_insets.dart';
 import '../shell/page_frame.dart';
 import '../theme/app_icons.dart';
@@ -25,14 +27,29 @@ bool _wrapPreference = true;
 /// 一组文件的改动:顶上一排文件胶囊,左右滑切换文件;每个文件是带行号的
 /// 统一 diff。右上角:换行开关、复制补丁。
 class ChangeDiffPage extends StatefulWidget {
-  const ChangeDiffPage({super.key, required this.files, this.initialIndex = 0, this.title});
+  const ChangeDiffPage({
+    super.key,
+    required this.files,
+    this.initialIndex = 0,
+    this.title,
+    this.sessionId,
+  });
 
   final List<FileChange> files;
   final int initialIndex;
   final String? title;
 
-  static Route<void> route(List<FileChange> files, {int initialIndex = 0, String? title}) => MaterialPageRoute<void>(
-    builder: (_) => ChangeDiffPage(files: files, initialIndex: initialIndex, title: title),
+  /// 这一轮所在会话：文件头据此把相对路径换成绝对路径，好在 Filza 里直达。
+  final String? sessionId;
+
+  static Route<void> route(
+    List<FileChange> files, {
+    int initialIndex = 0,
+    String? title,
+    String? sessionId,
+  }) => MaterialPageRoute<void>(
+    builder: (_) =>
+        ChangeDiffPage(files: files, initialIndex: initialIndex, title: title, sessionId: sessionId),
   );
 
   @override
@@ -179,6 +196,7 @@ class _ChangeDiffPageState extends State<ChangeDiffPage> {
                       file: files[i],
                       wrap: _wrap,
                       bottomInset: padding.bottom,
+                      sessionId: widget.sessionId,
                     ),
                   ),
                 ),
@@ -357,11 +375,20 @@ String _body(String text) => text.isEmpty ? '' : text.substring(1);
 /// 一个文件的整页 diff:文件头(目录、事实、复制路径)+ 行号栏 + 代码。
 /// 不换行时整块横向滚动(行号跟着走,手机上留给代码的宽度更多)。
 class FileDiffPane extends StatelessWidget {
-  const FileDiffPane({super.key, required this.file, required this.wrap, this.bottomInset = 0});
+  const FileDiffPane({
+    super.key,
+    required this.file,
+    required this.wrap,
+    this.bottomInset = 0,
+    this.sessionId,
+  });
 
   final FileChange file;
   final bool wrap;
   final double bottomInset;
+
+  /// 会话 id：有了它才能把工作区相对路径换成绝对路径，交给 Filza。
+  final String? sessionId;
 
   @override
   Widget build(BuildContext context) {
@@ -407,7 +434,7 @@ class FileDiffPane extends StatelessWidget {
           };
         }
 
-        final header = _FileHeader(file: file);
+        final header = _FileHeader(file: file, sessionId: sessionId);
         final body = file.lines.isEmpty
             ? Padding(
                 padding: const EdgeInsets.all(16),
@@ -557,9 +584,24 @@ class _DiffLineRow extends StatelessWidget {
 
 /// 文件头:文件名、目录、+/−、新建 / 修改次数、复制路径。
 class _FileHeader extends StatelessWidget {
-  const _FileHeader({required this.file});
+  const _FileHeader({required this.file, this.sessionId});
 
   final FileChange file;
+  final String? sessionId;
+
+  /// 先算绝对路径；算不出来就退回复制路径（和 openInFilza 的兜底一致）。
+  Future<void> _revealInFilza(BuildContext context) async {
+    final session = sessionId;
+    if (session == null) return;
+    final abs = await _hostPathOf(context, session, file.path);
+    if (!context.mounted) return;
+    if (abs == null) {
+      await copyPath(context, file.path);
+      ScaffoldMessenger.maybeOf(context)?.showBriefNotice(context.l10n.chatFilzaUnavailable);
+      return;
+    }
+    await openInFilza(context, abs);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -567,6 +609,8 @@ class _FileHeader extends StatelessWidget {
     final theme = Theme.of(context);
     final dsh = DshColors.of(context);
     final directory = file.directory;
+    // iOS 上 Filza 能直达；路径要绝对，点的时候再算（root 可能还没到）。
+    final canFilza = wordsForIos && sessionId != null;
     final facts = [
       if (file.created) l10n.activityDiffNewFile else if (file.edits > 1) l10n.activityDiffEditCount(file.edits),
       if (!file.created && file.hunks.isNotEmpty && !file.hunks.any((h) => h.numbered)) l10n.activityDiffUnknownLines,
@@ -599,13 +643,45 @@ class _FileHeader extends StatelessWidget {
               ],
             ),
           ),
-          TextButton.icon(
-            onPressed: () => copyPath(context, file.path),
-            icon: const Icon(AppIcons.link, size: 16),
-            label: Text(l10n.activityDiffCopyPath),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (canFilza)
+                TextButton.icon(
+                  onPressed: () => _revealInFilza(context),
+                  icon: const Icon(AppIcons.files, size: 16),
+                  label: const Text('Filza'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              TextButton.icon(
+                onPressed: () => copyPath(context, file.path),
+                icon: const Icon(AppIcons.link, size: 16),
+                label: Text(l10n.activityDiffCopyPath),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+}
+
+/// 工作区相对路径 → Host 上的绝对路径；root 认不出来时再问 Host 要一次。
+Future<String?> _hostPathOf(BuildContext context, String sessionId, String path) async {
+  if (path.startsWith('/')) return path;
+  final container = ProviderScope.containerOf(context, listen: false);
+  final root = container.read(workspaceRootProvider(sessionId));
+  final guess = workspaceHostPath(root, path);
+  if (guess.startsWith('/')) return guess;
+  try {
+    final source = container.read(workspaceSourceProvider(sessionId));
+    final stat = await source?.stat(path);
+    final abs = stat?.absolutePath ?? '';
+    if (abs.startsWith('/')) return abs;
+  } catch (_) {}
+  return null;
 }
