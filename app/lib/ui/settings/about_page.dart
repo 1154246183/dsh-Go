@@ -174,13 +174,14 @@ class AboutPage extends ConsumerWidget {
 
   /// 在 Filza 中定位一个本机绝对路径。
   ///
-  /// Filza 的 Info.plist 注册了 `filza` scheme，`filza://view/<abs-path>` 能直接跳过去。
+  /// 实测：`filza://view/<abs>` 只会唤起 Filza 停在首页，不带目录；
+  /// 只有 `filza:///<abs>`（scheme 后直接接绝对路径）才真的跳过去并高亮目标。
   /// 打不开就把路径复制给用户，至少不让人白点。
   static Future<bool> revealInFilza(String path) async {
     final clean = path.startsWith('/') ? path : '/' + path;
     for (final uri in <Uri>[
-      Uri.parse('filza://view' + clean),
       Uri.parse('filza://' + clean),
+      Uri.parse('filza://view' + clean),
     ]) {
       try {
         if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return true;
