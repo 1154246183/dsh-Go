@@ -1,0 +1,150 @@
+# Build an unsigned iOS IPA on a macOS runner.
+#
+# The engine is prepared first (tooling/ios/prepare-engine.sh): NodeMobile, the
+# composed runtime archive and the two native addons. Without it the app still
+# builds but can only reach a remote host.
+#
+# The bundle id is ios.dsh.go (not upstream's io.github.ccch1mneyyy.dshgo), and the
+# App Group is group.ios.dsh.go on all three entitlements plus ShareInbox.swift.
+#
+# Unsigned output: install it with a signing tool (or a Personal Team in Xcode).
+# `flutter build ios --release --no-codesign` is what CI uses; it does not sign.
+name: iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      prepare_engine:
+        description: 先准备本机引擎（会多花 10-20 分钟，产出的包才能在本机跑引擎）
+        type: boolean
+        default: true
+      configuration:
+        description: 构建配置
+        type: choice
+        options: [release, debug]
+        default: release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.47.7
+  NODE_VERSION: 24.22.1
+  TZ: Asia/Shanghai
+
+jobs:
+  ipa:
+    name: iOS ${{ inputs.configuration }} IPA
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcode-select -p
+          uname -m
+          df -h /
+
+      - name: Flutter ${{ env.FLUTTER_VERSION }}
+        run: |
+          git clone --depth 1 --branch "${{ env.FLUTTER_VERSION }}" https://github.com/flutter/flutter.git "$HOME/flutter"
+          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Flutter doctor
+        run: flutter --version && flutter doctor -v || true
+
+      - name: Bundle identifier is ios.dsh.go
+        run: |
+          set -eu
+          PBX=app/ios/Runner.xcodeproj/project.pbxproj
+          if grep -q 'io\.github\.ccch1mneyyy\.dshgo' "$PBX" \
+             app/ios/Runner/Runner.entitlements app/ios/PhoneRunner/PhoneRunner.entitlements \
+             app/ios/ShareExtension/ShareExtension.entitlements app/ios/ShareExtension/ShareInbox.swift; then
+            echo '::error::upstream bundle id still present; expected ios.dsh.go'
+            exit 1
+          fi
+          for f in "$PBX" app/ios/Runner/Info.plist; do
+            grep -c 'ios\.dsh\.go' "$f" >/dev/null || { echo "::error::$f has no ios.dsh.go"; exit 1; }
+          done
+          grep -q 'group\.ios\.dsh\.go' app/ios/ShareExtension/ShareInbox.swift
+          echo "bundle id OK: ios.dsh.go"
+
+      - name: Brew tools for the iSH guest (LLVM, lld, meson, ninja)
+        if: ${{ inputs.prepare_engine }}
+        run: |
+          brew install llvm lld meson ninja || true
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
+
+      - name: Prepare the on-device engine
+        if: ${{ inputs.prepare_engine }}
+        env:
+          PYTHON: python3
+        run: |
+          python3 --version
+          bash tooling/ios/prepare-engine.sh
+          du -sh app/ios/Engine || true
+          ls -la app/ios/Engine || true
+
+      - name: flutter pub get
+        working-directory: app
+        run: flutter pub get --enforce-lockfile
+
+      - name: Build (no codesign)
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter build ios --${{ inputs.configuration }} --no-codesign 2>&1 | tee /tmp/build.log || {
+            echo '::group::last 40 lines'
+            tail -40 /tmp/build.log
+            echo '::endgroup::'
+            grep -E 'error:|Error:|\(Xcode\):' /tmp/build.log | cut -c1-600 | head -20 | sed 's/%/%25/g; s/^/::error::/'
+            exit 1
+          }
+
+      - name: Package unsigned IPA
+        id: pack
+        run: |
+          set -eu
+          APP="app/build/ios/iphoneos/Runner.app"
+          [ -d "$APP" ] || { echo '::error::Runner.app not produced'; exit 1; }
+          echo "--- app bundle ---"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist" || true
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          NAME="DSH-Go-${{ inputs.configuration }}.ipa"
+          /usr/bin/zip -qry "$NAME" Payload
+          shasum -a 256 "$NAME" | tee "$NAME.sha256"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          ls -lh "$NAME"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dsh-go-ios-${{ inputs.configuration }}
+          path: |
+            ${{ steps.pack.outputs.name }}
+            ${{ steps.pack.outputs.name }}.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-build-log
+          path: /tmp/build.log
+          if-no-files-found: ignore
+          retention-days: 7
