@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../l10n/l10n.dart';
 import '../../state/app_info.dart';
@@ -69,6 +70,12 @@ class AboutPage extends ConsumerWidget {
               title: '清理缓存',
               subtitle: '删掉可再生的缓存和日志，会话、凭据、技能、附件都不动',
               onTap: () => unawaited(_openCleanup(context)),
+            ),
+            SettingsTile(
+              key: const ValueKey('settings-open-data-dir'),
+              title: '打开数据目录',
+              subtitle: '用 Filza 打开 DSH 的 .dsh 目录，可直接翻缓存和会话文件',
+              onTap: () => unawaited(_openDataDir(context)),
             ),
           ],
         ),
@@ -150,6 +157,42 @@ class AboutPage extends ConsumerWidget {
   }
 
   static String _sizeText(int bytes) => '${(bytes / 1048576).toStringAsFixed(1)} MB';
+
+  /// 用 Filza 打开 DSH 数据目录；没装 Filza 就把路径复制到剪贴板。
+  Future<void> _openDataDir(BuildContext context) async {
+    final home = await _dshHome();
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (home == null) {
+      messenger?.showSnackBar(const SnackBar(content: Text('没找到 DSH 数据目录')));
+      return;
+    }
+    final opened = await revealInFilza(home.path);
+    if (!opened) {
+      messenger?.showSnackBar(SnackBar(content: Text('没打开 Filza，路径已复制：' + home.path)));
+    }
+  }
+
+  /// 在 Filza 中定位一个本机绝对路径。
+  ///
+  /// Filza 的 Info.plist 注册了 `filza` scheme，`filza://view/<abs-path>` 能直接跳过去。
+  /// 打不开就把路径复制给用户，至少不让人白点。
+  static Future<bool> revealInFilza(String path) async {
+    final clean = path.startsWith('/') ? path : '/' + path;
+    for (final uri in <Uri>[
+      Uri.parse('filza://view' + clean),
+      Uri.parse('filza://' + clean),
+    ]) {
+      try {
+        if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return true;
+      } catch (_) {
+        // 换下一个写法
+      }
+    }
+    try {
+      await Clipboard.setData(ClipboardData(text: clean));
+    } catch (_) {}
+    return false;
+  }
 
   /// 清理缓存：只动 `cache/` 与 `ohos-lifecycle/` 两处可再生的数据。
   Future<void> _openCleanup(BuildContext context) async {
