@@ -1750,6 +1750,30 @@
           "after": "34f11a891dd7822a65acc1fadb587bb49e478ca4b9dceb0b288d466a0403f9cf",
           "before": "b65a86e55f02d863286bb6faac8ae292c18fffca3c8aa4491b600fa4dd6b48d0"
         }
+      },
+      "0.2.2-rc.2": {
+        "node_modules/@deepseek-ai/dsh-base/cordis.patch.yml": {
+          "after": "c163b257ca7dab4c49782da29ad4aff76656a2bf1ad65bbd9c32aa90f7719643",
+          "before": "026fa70d7746609549ea7607f5b60c76fd19476e13549729dc1171f0a1d96cc8"
+        }
+      },
+      "0.2.2-rc.3": {
+        "node_modules/@deepseek-ai/dsh-base/cordis.patch.yml": {
+          "after": "c163b257ca7dab4c49782da29ad4aff76656a2bf1ad65bbd9c32aa90f7719643",
+          "before": "026fa70d7746609549ea7607f5b60c76fd19476e13549729dc1171f0a1d96cc8"
+        }
+      },
+      "0.2.2-rc.4": {
+        "node_modules/@deepseek-ai/dsh-base/cordis.patch.yml": {
+          "after": "c163b257ca7dab4c49782da29ad4aff76656a2bf1ad65bbd9c32aa90f7719643",
+          "before": "026fa70d7746609549ea7607f5b60c76fd19476e13549729dc1171f0a1d96cc8"
+        }
+      },
+      "0.2.2-rc.5": {
+        "node_modules/@deepseek-ai/dsh-base/cordis.patch.yml": {
+          "after": "33f3f353ae0f35acc00d6031d484a3896e91f021925a7c3335cac21d4b68d5f7",
+          "before": "1a7a094e659c2d775709d0ebcee4d78f8e06fb351096af50bbeef59b5b763aa2"
+        }
       }
     }
   },
