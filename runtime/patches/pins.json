@@ -1743,6 +1743,14 @@
           "before": "070c839e2c00e2d5f7c5d82307ca3d84dbb2323e46979daf265908751bbe8ae8"
         }
       }
+    },
+    "dsh-go-unrestricted-defaults.diff": {
+      "0.2.2-rc.1": {
+        "node_modules/@deepseek-ai/dsh-base/cordis.patch.yml": {
+          "after": "34f11a891dd7822a65acc1fadb587bb49e478ca4b9dceb0b288d466a0403f9cf",
+          "before": "b65a86e55f02d863286bb6faac8ae292c18fffca3c8aa4491b600fa4dd6b48d0"
+        }
+      }
     }
   },
   "schema": 2,
@@ -1750,6 +1758,7 @@
     "android": [
       "cordis-effect-dispose-completion.diff",
       "credentials-decimal-refs.diff",
+      "dsh-go-unrestricted-defaults.diff",
       "fs-create-exclusive.diff",
       "install-log-redaction.diff",
       "piai-google-openai-store.diff",
@@ -1865,8 +1874,19 @@
     "ohos": [
       "cordis-effect-dispose-completion.diff",
       "credentials-decimal-refs.diff",
+      "dsh-go-unrestricted-defaults.diff",
       "fs-create-exclusive.diff",
       "install-log-redaction.diff",
+      "ohos-attachment-publication.diff",
+      "ohos-discovery-response-cleanup.diff",
+      "ohos-hap-native-libraries.diff",
+      "ohos-mcp-stdio-unavailable.diff",
+      "ohos-network-transport.diff",
+      "ohos-output-utf8.diff",
+      "ohos-provider-body-timeout.diff",
+      "ohos-provider-stream-body-timeout.diff",
+      "ohos-virtual-process.diff",
+      "ohos-workspace-changes.diff",
       "piai-google-openai-store.diff",
       "plugin-manager-active-run-guard.diff",
       "plugin-manager-cancel-tree-confirmation.diff",
@@ -1895,6 +1915,8 @@
       "zzzzzzz-job-ring-trim.diff",
       "zzzzzzz-jsonl-root-check-retry.diff",
       "zzzzzzz-mcp-resource-lookup.diff",
+      "zzzzzzz-ohos-fs-exclusive.diff",
+      "zzzzzzz-ohos-session-publication.diff",
       "zzzzzzz-piai-developer-tools.diff",
       "zzzzzzz-plugin-list-index.diff",
       "zzzzzzz-preset-owner-dispose.diff",
@@ -1911,11 +1933,13 @@
       "zzzzzzz-web-fetch-redirect-cleanup.diff",
       "zzzzzzz-workspace-observation-queue.diff",
       "zzzzzzzz-model-defaults.diff",
+      "zzzzzzzz-ohos-atomic-publication.diff",
       "zzzzzzzz-schedule-authorization.diff",
       "zzzzzzzzz-credentials-disposal.diff",
       "zzzzzzzzz-developer-header-lookup.diff",
       "zzzzzzzzz-job-result-bytes.diff",
       "zzzzzzzzz-materialize-temp.diff",
+      "zzzzzzzzz-ohos-search-confinement.diff",
       "zzzzzzzzz-plugin-detail-body-cancel.diff",
       "zzzzzzzzz-plugin-manager-metadata-inventory.diff",
       "zzzzzzzzz-prompt-admission.diff",
@@ -1932,16 +1956,23 @@
       "zzzzzzzzz-terminal-tail.diff",
       "zzzzzzzzz-tool-history-lookup.diff",
       "zzzzzzzzz-workspace-domain-close.diff",
+      "zzzzzzzzzz-ohos-shell-limit-description.diff",
       "zzzzzzzzzz-plugin-manager-log-write-all.diff",
       "zzzzzzzzzz-plugin-update-selection.diff",
       "zzzzzzzzzz-session-export-descendant-refs.diff",
       "zzzzzzzzzz-workspace-watch-error.diff",
+      "zzzzzzzzzzz-ohos-search-ignore-description.diff",
       "zzzzzzzzzzz-plugin-operations-log-utf8.diff",
       "zzzzzzzzzzz-plugin-update-precondition.diff",
+      "zzzzzzzzzzzz-ohos-composition.diff",
+      "zzzzzzzzzzzz-ohos-runtime-capabilities.diff",
       "zzzzzzzzzzzz-plan-pending-restore.diff",
       "zzzzzzzzzzzz-plugin-update-hmr-selection.diff",
+      "zzzzzzzzzzzzz-ohos-lifecycle.diff",
+      "zzzzzzzzzzzzz-ohos-plugin-install-refusal.diff",
       "zzzzzzzzzzzzz-plan-failed-command-pending.diff",
       "zzzzzzzzzzzzz-plugin-update-hmr-precondition.diff",
+      "zzzzzzzzzzzzzz-ohos-composition-imports.diff",
       "zzzzzzzzzzzzzz-plugin-manager-lock-lifetime.diff",
       "zzzzzzzzzzzzzzz-read-line-surrogate.diff",
       "zzzzzzzzzzzzzzz-workflow-result-unicode.diff",
@@ -1975,28 +2006,7 @@
       "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-loader-group-own-key.diff",
       "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-storage-json-postpublish.diff",
       "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-credentials-record-own-key.diff",
-      "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-piai-credential-wait-cancel.diff",
-      "ohos-attachment-publication.diff",
-      "ohos-discovery-response-cleanup.diff",
-      "ohos-hap-native-libraries.diff",
-      "ohos-mcp-stdio-unavailable.diff",
-      "ohos-network-transport.diff",
-      "ohos-output-utf8.diff",
-      "ohos-provider-body-timeout.diff",
-      "ohos-provider-stream-body-timeout.diff",
-      "ohos-virtual-process.diff",
-      "ohos-workspace-changes.diff",
-      "zzzzzzz-ohos-fs-exclusive.diff",
-      "zzzzzzz-ohos-session-publication.diff",
-      "zzzzzzzz-ohos-atomic-publication.diff",
-      "zzzzzzzzz-ohos-search-confinement.diff",
-      "zzzzzzzzzz-ohos-shell-limit-description.diff",
-      "zzzzzzzzzzz-ohos-search-ignore-description.diff",
-      "zzzzzzzzzzzz-ohos-composition.diff",
-      "zzzzzzzzzzzz-ohos-runtime-capabilities.diff",
-      "zzzzzzzzzzzzz-ohos-lifecycle.diff",
-      "zzzzzzzzzzzzz-ohos-plugin-install-refusal.diff",
-      "zzzzzzzzzzzzzz-ohos-composition-imports.diff"
+      "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-piai-credential-wait-cancel.diff"
     ]
   }
 }
