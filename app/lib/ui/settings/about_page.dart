@@ -174,14 +174,23 @@ class AboutPage extends ConsumerWidget {
 
   /// 在 Filza 中定位一个本机绝对路径。
   ///
-  /// 实测：`filza://view/<abs>` 只会唤起 Filza 停在首页，不带目录；
-  /// 只有 `filza:///<abs>`（scheme 后直接接绝对路径）才真的跳过去并高亮目标。
+  /// Filza（com.tigisoftware.Filza）的 Info.plist 只注册了 `filza` 一个
+  /// scheme，二进制里写死的入口只有 `filza://view` 与 `filza://license`。
+  /// 因此只有 `filza://view/<绝对路径>` 会定位并高亮目标；
+  /// `filza:///<绝对路径>` 同样匹配 scheme，却走不到 view 处理器，
+  /// 表现为「唤起 Filza 但停在首页」——之前把它排在第一位就是症状来源。
+  ///
+  /// 路径整段百分号编码一次：Filza 对 view 之后的部分调用
+  /// stringByRemovingPercentEncoding，分段编码反而会把分隔符留成裸 `/`，
+  /// 空格与中文因此还原不回来。
+  ///
   /// 打不开就把路径复制给用户，至少不让人白点。
   static Future<bool> revealInFilza(String path) async {
     final clean = path.startsWith('/') ? path : '/' + path;
+    final encoded = Uri.encodeComponent(clean);
     for (final uri in <Uri>[
-      Uri.parse('filza://' + clean),
-      Uri.parse('filza://view' + clean),
+      Uri.parse('filza://view' + encoded), // 定位并高亮
+      Uri.parse('filza://'), // 至少唤起 Filza
     ]) {
       try {
         if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return true;
