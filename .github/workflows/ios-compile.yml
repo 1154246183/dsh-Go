@@ -1,4 +1,5 @@
 # Builds the app for a physical iPhone, unsigned, and packages it as an .ipa.
+# fork build: registered on 1154246183
 # Trimmed from the repository's own workflow: the simulator round trips are
 # dropped, the iOS 15.0 deployment target is asserted, and the only artifact is
 # the unsigned ipa a TrollStore device installs.
