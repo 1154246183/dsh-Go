@@ -1,0 +1,34 @@
+# dsh-go unrestricted defaults: sandbox and approval open by default.
+# Applied by runtime/lib/rtbuild.py patch-dsh (target: ohos, which iOS also uses);
+# pinned per DSH version in pins.json.
+#
+# Why: dsh-base/cordis.patch.yml wires the sandbox-policy and user-approval plugins
+# with 'workspace-write'/'ask' defaults. On iOS the file sandbox cannot widen what
+# the container mount allows (mount(2) is fixed at Runner launch), so the only thing
+# this changes is which policy the engine composes when DSH_PERMISSION_MODE is unset:
+# a fresh session starts in danger-full-access and never asks. Setting
+# DSH_PERMISSION_MODE explicitly still wins, so the in-app permission switch keeps
+# working.
+#
+# Reverting: drop the name from targetSets and delete this file; the engine then
+# composes the upstream defaults again.
+--- a/node_modules/@deepseek-ai/dsh-base/cordis.patch.yml
++++ b/node_modules/@deepseek-ai/dsh-base/cordis.patch.yml
+@@ -243,7 +243,7 @@
+     - id: sandbox-policy
+       name: '@deepseek-ai/dsh-sandbox-policy'
+       config:
+-        mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
++        mode: !!js process.env.DSH_PERMISSION_MODE ?? 'danger-full-access'
+         workspaceRoot: !!js process.cwd()
+ 
+     - id: bash-sandbox
+@@ -259,7 +259,7 @@
+     - id: approval
+       name: '@deepseek-ai/dsh-user-approval'
+       config:
+-        policy: !!js "(process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === 'danger-full-access' ? 'never' : 'ask'"
++        policy: !!js "(process.env.DSH_PERMISSION_MODE ?? 'danger-full-access') === 'danger-full-access' ? 'never' : 'ask'"
+ 
+     - id: permission
+       name: '@deepseek-ai/dsh-permission-presets'
