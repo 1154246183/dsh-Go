@@ -1,5 +1,5 @@
-// The quiet per-turn footnote (duration, steps, cost, tokens) that opens the
-// turn's trajectory.
+// The quiet per-turn footnote: just when the turn was generated. It opens the
+// turn's trajectory, where duration, steps, cost and tokens live.
 
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/material.dart';
@@ -9,12 +9,10 @@ import '../../../plugins/native/native_model.dart' show NativeTurnNotes;
 import '../../plugins/native/native_tone.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
-import '../run_info.dart';
-import '../usage_sheet.dart' show formatTokens;
 
-/// 一轮结束后的**回合脚注**:`47 秒 · 12 步 · 约 ¥0.03 · 36 万 tokens ›`。
+/// 一轮结束后的**回合脚注**:`23:08 ›`——只报生成时刻。
 ///
-/// 放不下时依次省掉 tokens、步数、花费,时长总在。点开本轮轨迹。
+/// 时长、步数、花费、tokens 都在点开的「本轮轨迹」里，脚注只留一个可点的时刻。
 class TurnFootnote extends StatelessWidget {
   const TurnFootnote({super.key, required this.trace, this.onTap, this.notes});
 
@@ -24,20 +22,21 @@ class TurnFootnote extends StatelessWidget {
   /// What plugins say about this turn (`turn.note`): the first thing to go when it doesn't fit.
   final NativeTurnNotes? notes;
 
+  /// 时刻：`23:08`。脚注只报「这轮是什么时候生成的」，
+  /// 时长、步数、花费、tokens 全部放进本轮轨迹详情，避免和下面那排重复。
+  static String _clock(DateTime time) {
+    final local = time.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(local.hour)}:${two(local.minute)}';
+  }
+
   /// 从全到简的几种写法(第一种放得下就用它)。
+  /// 只有时刻与插件注记两种成分，放不下就先丢注记。
   static List<String> variants(TurnTrace trace, {String? note}) {
-    final duration = trace.duration;
-    final time = duration == null ? appL10n.commonInProgress : formatSpan(duration);
-    final steps = trace.steps > 0 ? appL10n.chatTurnSteps(trace.steps) : null;
-    final cost = turnCostLabel(trace);
-    final tokens = trace.usage.isEmpty ? null : '${formatTokens(trace.usage.total)} tokens';
-    String join(List<String?> parts) => parts.whereType<String>().join(' · ');
+    final clock = _clock(trace.start);
     return [
-      if (note != null) join([time, steps, cost, tokens, note]),
-      join([time, steps, cost, tokens]),
-      join([time, steps, cost]),
-      join([time, cost]),
-      time,
+      if (note != null && note.isNotEmpty) '$clock · $note',
+      clock,
     ];
   }
 
