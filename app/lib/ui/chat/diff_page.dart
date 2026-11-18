@@ -603,6 +603,18 @@ class _FileHeader extends StatelessWidget {
     await openInFilza(context, abs);
   }
 
+  /// 复制时优先给绝对路径：粘到 Filza 或终端里直接能用。
+  Future<void> _copyPath(BuildContext context) async {
+    final session = sessionId;
+    var value = file.path;
+    if (session != null) {
+      final abs = await _hostPathOf(context, session, file.path);
+      if (abs != null) value = abs;
+    }
+    if (!context.mounted) return;
+    await copyPath(context, value);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -658,7 +670,7 @@ class _FileHeader extends StatelessWidget {
                   ),
                 ),
               TextButton.icon(
-                onPressed: () => copyPath(context, file.path),
+                onPressed: () => _copyPath(context),
                 icon: const Icon(AppIcons.link, size: 16),
                 label: Text(l10n.activityDiffCopyPath),
               ),
