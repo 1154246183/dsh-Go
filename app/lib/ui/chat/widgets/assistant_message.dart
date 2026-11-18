@@ -134,7 +134,9 @@ class _AssistantMessageState extends State<AssistantMessage> {
       // Long-press opens the menu; selecting text is one of its entries.
       // repairBareViews: a model that forgets the ```dsh-ui fence still gets
       // its view drawn instead of a wall of JSON.
-      _body = MarkdownBody(text: text, streaming: streaming, reveal: reveal, selectable: false, repairBareViews: true);
+      // 长按交给系统原生选字：同一个菜单在下方动作行的「···」里已经有了，
+      // 长按再弹一次是重复。
+      _body = MarkdownBody(text: text, streaming: streaming, reveal: reveal, selectable: true, repairBareViews: true);
       _bodyText = text;
       _bodyStreaming = streaming;
       _bodyReveal = reveal;
@@ -181,7 +183,8 @@ class _AssistantMessageState extends State<AssistantMessage> {
     final actions = widget.showActions && !streaming && text.isNotEmpty;
     final reply = HoldLift(
       behavior: HitTestBehavior.opaque,
-      onLongPress: streaming || text.isEmpty ? null : () => _menu(text),
+      // 长按选字，不弹菜单（菜单走下方「···」）。
+      onLongPress: null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
