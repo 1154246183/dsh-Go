@@ -24,7 +24,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   # 同时只留一个构建，但不要取消正在跑的那个：一次编译要二十多分钟，
@@ -237,4 +237,34 @@ jobs:
             ${{ runner.temp }}/DSH-Go.ipa
           if-no-files-found: warn
           compression-level: 0
-          retention-days: 14
+          retention-days: 3
+
+      # 直链下载：把 ipa 挂到 Release，手机浏览器点一下就能存
+      - name: Publish release asset
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          tag="ios-$(date -u +%Y%m%d-%H%M%S)"
+          gh release create "$tag" "$RUNNER_TEMP/DSH-Go.ipa" \
+            --repo "${{ github.repository }}" \
+            --title "DSH Go iOS $tag" \
+            --notes "unsigned ipa for TrollStore · 帮助与关于页已加「清理缓存」"
+          url="https://github.com/${{ github.repository }}/releases/download/$tag/DSH-Go.ipa"
+          echo "::notice title=direct-link::$url"
+          echo "### 直接下载" >> "$GITHUB_STEP_SUMMARY"
+          echo "$url" >> "$GITHUB_STEP_SUMMARY"
+
+      # 只保留最新三个，旧的连 tag 一起删，免得占地方
+      - name: Prune old ipa releases
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release list --repo "${{ github.repository }}" --limit 100 \
+            --json tagName --jq '.[] | select(.tagName | startswith("ios-")) | .tagName' \
+            | tail -n +4 | while read -r old; do
+                gh release delete "$old" --repo "${{ github.repository }}" --yes --cleanup-tag || true
+              done
