@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../l10n/l10n.dart';
 import '../../theme/app_icons.dart';
@@ -170,4 +171,31 @@ Future<void> copyPath(BuildContext context, String path) async {
   await Clipboard.setData(ClipboardData(text: path));
   HapticFeedback.selectionClick();
   messenger?.showBriefNotice(l10n.chatPathCopied);
+}
+
+/// 在 Filza 里直达 [path]（越狱机才有 Filza；没有就退回复制路径）。
+///
+/// Filza 4.x 的 scheme 是 `filza://view/<绝对路径>`，
+/// 路径开头的 `/` 不重复：`filza://view/var/mobile/x`。
+Future<void> openInFilza(BuildContext context, String path) async {
+  final l10n = context.l10n;
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final target = path.startsWith('/') ? path.substring(1) : path;
+  final url = Uri.parse('filza://view/$target');
+  // 自定义 scheme 在 iOS 上不走 canLaunchUrl（那要先在 Info.plist 的
+  // LSApplicationQueriesSchemes 里声明），直接交给系统打开；
+  // launchUrl 返回 false 或抛异常就说明没装 Filza。
+  var opened = false;
+  try {
+    opened = await launchUrl(url, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    opened = false;
+  }
+  if (opened) {
+    HapticFeedback.selectionClick();
+    return;
+  }
+  // 没装 Filza 或者系统不让跳：退回复制路径，至少还能自己去粘贴。
+  await copyPath(context, path);
+  messenger?.showBriefNotice(l10n.chatFilzaUnavailable);
 }

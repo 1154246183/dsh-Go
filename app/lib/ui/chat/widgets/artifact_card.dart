@@ -21,7 +21,7 @@ import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
 import '../artifact_preview.dart';
 import '../../common/expand_reveal.dart';
-import 'change_card.dart' show copyPath;
+import 'change_card.dart' show copyPath, openInFilza;
 import 'chat_card.dart';
 
 /// 一轮结束时的**产物卡**:这一轮交付(`present`)或生成的文件。
@@ -221,6 +221,8 @@ class _ArtifactTileState extends ConsumerState<ArtifactTile> {
         await shareArtifact(context, sessionId: widget.sessionId, artifact: _artifact);
       case ArtifactAction.save:
         await _save();
+      case ArtifactAction.filza:
+        await openInFilza(context, _artifact.path);
       case ArtifactAction.copyPath:
         if (mounted) await copyPath(context, _artifact.path);
     }
@@ -413,6 +415,7 @@ enum ArtifactAction {
   openWith(AppIcons.openWith),
   share(AppIcons.share),
   save(AppIcons.save),
+  filza(AppIcons.files),
   copyPath(AppIcons.copy);
 
   const ArtifactAction(this.icon);
@@ -424,12 +427,14 @@ enum ArtifactAction {
     ArtifactAction.openWith => appL10n.commonOpenWith,
     ArtifactAction.share => appL10n.commonShare,
     ArtifactAction.save => wordsForIos ? appL10n.iosSaveToFiles : appL10n.chatSaveToDownloads,
+    ArtifactAction.filza => appL10n.chatRevealInFilza,
     ArtifactAction.copyPath => appL10n.chatCopyPath,
   };
 
   String? get hint => switch (this) {
     ArtifactAction.open => appL10n.chatOpenInDefaultApp,
     ArtifactAction.save => wordsForIos ? appL10n.iosFilesFolderHint : appL10n.chatDownloadsFolderHint,
+    ArtifactAction.filza => wordsForIos ? appL10n.chatRevealInFilzaHint : null,
     _ => null,
   };
 }
@@ -509,6 +514,7 @@ Future<ArtifactAction?> showArtifactMenu(
         if (canFetch && artifactPreviewable(artifact, officeToPdf: officeToPdf)) ArtifactAction.preview,
         if (canFetch) ...[ArtifactAction.open, ArtifactAction.openWith, ArtifactAction.share],
         if (canFetch && !artifact.inPhoneDownloads) ArtifactAction.save,
+        if (canFetch && wordsForIos && artifact.path.startsWith('/')) ArtifactAction.filza,
         ArtifactAction.copyPath,
       ];
       return SafeArea(

@@ -32,7 +32,7 @@ import 'render/code_block.dart';
 import 'render/markdown_body.dart';
 import 'render/markdown_image.dart' show MarkdownImageScope;
 import 'widgets/artifact_card.dart' show ArtifactAction, showArtifactMenu;
-import 'widgets/change_card.dart' show copyPath;
+import 'widgets/change_card.dart' show copyPath, openInFilza;
 import 'widgets/image_actions.dart' show GallerySaveButton;
 import 'widgets/image_gallery.dart' show ImagePager, ViewerImage, ZoomableImage;
 import '../common/brief_notice.dart';
@@ -165,6 +165,10 @@ Future<void> runArtifactAction(
       if (context.mounted) await copyPath(context, target.path);
       return;
     }
+    if (action == ArtifactAction.filza) {
+      if (context.mounted) await openInFilza(context, target.path);
+      return;
+    }
     final files = ref.read(artifactFilesProvider);
     switch (action) {
       case ArtifactAction.open:
@@ -178,7 +182,7 @@ Future<void> runArtifactAction(
         messenger?.showBriefNotice(
           l10n.viewArtifactSaved(where.replaceFirst(RegExp(r'^Download/'), l10n.viewDownloadFolder)),
         );
-      case ArtifactAction.preview || ArtifactAction.copyPath:
+      case ArtifactAction.preview || ArtifactAction.copyPath || ArtifactAction.filza:
         break;
     }
   } catch (e) {
