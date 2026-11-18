@@ -178,20 +178,23 @@ Future<void> copyPath(BuildContext context, String path) async {
 
 /// 在 Filza 里直达 [path]（越狱机才有 Filza；没有就退回复制路径）。
 ///
-/// 实测（Filza 4.x / iOS 15 rootless）：
-/// - `filza:///<绝对路径>` 直达并高亮目标，是唯一真正“跳过去”的写法；
-/// - `filza://view/<绝对路径>` 只会把 Filza 唤起停在首页；
-/// - 所以按 直达 → 旧写法 → 只唤起 → 「文件」App 的顺序试，全失败才复制路径。
+/// 实测（Filza 4.0 / iOS 15 rootless）：
+/// - `filza://view/<绝对路径>` 直达并高亮目标，路径里的空格和中文必须
+///   百分号编码，否则 Filza 收到的是坏 URL，只会停在上一次的位置；
+/// - `filza:///<绝对路径>` 只是被唤起，不定位；
+/// - 所以先按能跳的写法试，再兜底只唤起，最后交给「文件」App。
 Future<void> openInFilza(BuildContext context, String path) async {
   final l10n = context.l10n;
   final messenger = ScaffoldMessenger.maybeOf(context);
   final abs = path.startsWith('/') ? path : '/$path';
-  final bare = abs.substring(1);
+  // 每段单独编码：保留分隔用的 /，转义空格、中文和 % 本身。
+  final encoded = abs.split('/').map(Uri.encodeComponent).join('/');
+  final target = encoded.startsWith('/') ? encoded.substring(1) : encoded;
   final uris = <Uri>[
-    Uri.parse('filza://$abs'), // filza:///var/mobile/… 直达
-    Uri.parse('filza://view/$bare'), // 兜底：只唤起
-    Uri.parse('filza://'),
-    Uri.parse('shareddocuments://$abs'), // 没装 Filza 时交给「文件」
+    Uri.parse('filza://view/$target'), // filza://view/var/mobile/… 直达
+    Uri.parse('filza:///$encoded'), // 有些版本认这个
+    Uri.parse('filza://'), // 只唤起
+    Uri.parse('shareddocuments://${_encodeSharePath(abs)}'), // 没装 Filza 时交给「文件」
   ];
   for (final uri in uris) {
     var opened = false;
@@ -209,3 +212,6 @@ Future<void> openInFilza(BuildContext context, String path) async {
   await copyPath(context, abs);
   messenger?.showBriefNotice(l10n.chatFilzaUnavailable);
 }
+
+/// `shareddocuments://` 要把整条路径当一个查询参数，只转义 / 以外的字符。
+String _encodeSharePath(String abs) => Uri.encodeComponent(abs).replaceAll('%2F', '/');
