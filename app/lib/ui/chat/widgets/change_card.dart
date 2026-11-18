@@ -178,22 +178,28 @@ Future<void> copyPath(BuildContext context, String path) async {
 
 /// 在 Filza 里直达 [path]（越狱机才有 Filza；没有就退回复制路径）。
 ///
-/// 实测（Filza 4.0 / iOS 15 rootless）：
-/// - `filza://view/<绝对路径>` 直达并高亮目标，路径里的空格和中文必须
-///   百分号编码，否则 Filza 收到的是坏 URL，只会停在上一次的位置；
-/// - `filza:///<绝对路径>` 只是被唤起，不定位；
-/// - 所以先按能跳的写法试，再兜底只唤起，最后交给「文件」App。
+/// Filza 的 Info.plist 只注册了 `filza` 一个 scheme（com.tigisoftware.Filza），
+/// 二进制里硬编码的入口只有两个常量：`filza://view` 和 `filza://license`。
+/// 所以能定位的写法只有一个：
+///
+/// - `filza://view/<绝对路径>` — 直达并高亮目标。Filza 会对 host 之后的
+///   整段调用 stringByRemovingPercentEncoding，所以路径按整段编码一次，
+///   不能按 `/` 分段编码（分段会把分隔符留成裸 `/`，与 `%2F` 混在一起，
+///   空格和中文仍然会被当成原始字节）。
+/// - `filza:///` 也匹配 scheme，但走不到 view 处理器：只唤起、不定位。
+///   之前把它排在第一候选，所以每次都停在 Filza 首页。
+///
+/// launchUrl 返回 true 只说明「有 App 接管了这个 scheme」，不代表 Filza
+/// 真定位到了目标；因此这里不靠它判断是否高亮成功，只按候选顺序尝试。
 Future<void> openInFilza(BuildContext context, String path) async {
   final l10n = context.l10n;
   final messenger = ScaffoldMessenger.maybeOf(context);
   final abs = path.startsWith('/') ? path : '/$path';
-  // 每段单独编码：保留分隔用的 /，转义空格、中文和 % 本身。
-  final encoded = abs.split('/').map(Uri.encodeComponent).join('/');
-  final target = encoded.startsWith('/') ? encoded.substring(1) : encoded;
+  // 整段编码一次：Filza 自己解码，空格/中文/% 都能正确还原。
+  final encoded = Uri.encodeComponent(abs);
   final uris = <Uri>[
-    Uri.parse('filza://view/$target'), // filza://view/var/mobile/… 直达
-    Uri.parse('filza:///$encoded'), // 有些版本认这个
-    Uri.parse('filza://'), // 只唤起
+    Uri.parse('filza://view$encoded'), // filza://view/var/mobile/… 直达并高亮
+    Uri.parse('filza://'), // 至少唤起 Filza
     Uri.parse('shareddocuments://${_encodeSharePath(abs)}'), // 没装 Filza 时交给「文件」
   ];
   for (final uri in uris) {
