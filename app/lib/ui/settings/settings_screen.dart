@@ -8,13 +8,11 @@ import '../../runtime/local_footprint.dart';
 import '../../runtime/runtime_state.dart';
 import '../../state/account_state.dart';
 import '../../state/android_features.dart';
-import '../../state/ask_ai.dart' show askAiAvailableProvider;
 import '../../state/balance_state.dart';
 import '../../state/connection_state.dart';
 import '../../state/engine_settings_state.dart';
 import '../../state/features_state.dart';
 import '../../state/hosts_state.dart';
-import '../../state/phone_state.dart';
 import '../../state/plugins_state.dart';
 import '../../state/sessions_state.dart';
 import '../../state/settings_state.dart';
@@ -33,12 +31,10 @@ import '../github_build_page.dart';
 import '../engine_settings/engine_settings_hub.dart';
 import '../engine_settings/web_search_page.dart';
 import 'media_settings_page.dart';
-import '../features/feature_catalog.dart' show communityPage;
 import '../features/feature_format.dart' show permissionName;
 import '../features/permission_page.dart';
 import '../onboarding/api_key_page.dart' show maskApiKey;
 import '../pets/pet_settings_page.dart';
-import '../phone/phone_control_screen.dart';
 import '../plugins/plugins_screen.dart';
 import '../plugins/seats/plugin_settings_tiles.dart';
 import '../plugins/seats/seat_probe.dart';
@@ -107,14 +103,8 @@ class SettingsScreen extends ConsumerWidget {
         ? (replyPrefsSummary(ref) == null ? l10n.commonNotSet : l10n.hubValueSet)
         : null;
     // 能力.
-    final phone = android || ios ? ref.watch(phoneProvider) : null;
-    final phoneValue = phone == null || !phone.loaded || !phone.status.ready
-        ? null
-        : !phone.status.enabled
-        ? l10n.hubValueOff
-        : (ios ? phone.status.bridgeListening : phone.status.a11y.ok)
-        ? l10n.pluginsTurnedOn
-        : l10n.hubValueOneStep;
+    // 「手机操控」那行删掉后，phone / phoneValue 就没地方用了 ——
+    // 留着会让 analyze 报 unused_local_variable。
     final plugins = ref.watch(installedPluginsProvider.select((s) => s.value?.length));
     // Read only once the host's settings are at hand: the hub asks for nothing.
     final search = ref.exists(engineSettingsProvider) ? ref.watch(engineSettingsProvider).value : null;
@@ -170,14 +160,14 @@ class SettingsScreen extends ConsumerWidget {
         SettingsSection(
           title: l10n.hubGroupCapabilities,
           children: [
-            if (android || ios)
-              SettingsTile(
-                icon: AppIcons.phoneControl,
-                tint: SettingsHues.abilities,
-                spot: SettingsIndex.entry(SettingsPageId.phone),
-                value: text(phoneValue, color: phoneValue == l10n.hubValueOneStep ? colors.warning : null),
-                onTap: () => _push(context, const PhoneControlScreen()),
-              ),
+            // 「手机操控」这一行已按要求去掉。
+            //
+            // 它在 iOS 上的状态值来自 bridgeListening，而那个值要求
+            // Documents/pairingFile.plist 存在（IOSPhoneSelfRunner.isConfigured）
+            // —— 没有配对记录就永远是 false，于是恒显示「还差一步」。
+            // 既然不用这套配对，行本身也没有意义，直接不画。
+            // SettingsPageId.phone 与 PhoneControlScreen 都留着：
+            // 深链和设置搜索仍然能到那一页，只是首页不再给入口。
             SettingsTile(
               icon: AppIcons.webSearch,
               tint: SettingsHues.abilities,
@@ -302,21 +292,9 @@ class SettingsScreen extends ConsumerWidget {
         SettingsSection(
           title: l10n.hubGroupHelp,
           children: [
-            if (ref.watch(askAiAvailableProvider))
-              SettingsTile(
-                key: const ValueKey('settings-ask-ai'),
-                icon: AppIcons.askAi,
-                tint: SettingsHues.help,
-                spot: Spots.askAi,
-                value: Text(l10n.askAiTooltip),
-                onTap: () => unawaited(askAi(context, AskAiTopic.overview)),
-              ),
-            SettingsTile(
-              icon: AppIcons.community,
-              tint: SettingsHues.help,
-              spot: Spots.community,
-              onTap: () => _push(context, communityPage()),
-            ),
+            // 「使用帮助」(问 AI) 与「社区」两行已按要求去掉。
+            // Spots.askAi / Spots.community 的定义留在 spots.dart 里不动 ——
+            // 设置搜索与深链还认它们，只是首页不再画这两行。
             SettingsTile(
               icon: AppIcons.diagnostics,
               tint: SettingsHues.help,

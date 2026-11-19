@@ -87,32 +87,58 @@ class _WebDisabled extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    return AppPage(
-      title: l10n.commonWeb,
-      showLargeTitle: false,
-      actions: [
-        // 网页模式当主页时，返回键由外面给；别的入口没有。
-        ?handle?.call(44),
-      ],
-      slivers: [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 80),
-            child: Center(
-              child: EmptyView(
-                icon: AppIcons.webApp,
-                title: l10n.webDisabledTitle,
-                message: l10n.webDisabledBody,
+    // 返回键：AppPage 自己的那个走 Navigator.maybePop()，在这一页上点不动
+    // （这一页是从抽屉 push 上来的普通路由，maybePop 却没退回去）。
+    // 不给它兜底的话人就被困在这儿了，所以这里显式放一个圆钮：
+    // 能 pop 就 pop，已经在最底层就 popUntilFirst —— 两种都回得到对话页。
+    void back() {
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pop();
+      } else {
+        navigator.popUntil((route) => route.isFirst);
+      }
+    }
+
+    return PopScope(
+      // 系统返回手势/返回键也要能出去，别被上层的 PopScope 吃掉。
+      canPop: true,
+      child: AppPage(
+        title: l10n.commonWeb,
+        showLargeTitle: false,
+        actions: [
+          // 网页模式当主页时，返回键由外面给；别的入口没有。
+          ?handle?.call(44),
+        ],
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Row(
+                children: [
+                  GlassIconButton(icon: AppIcons.back, tooltip: l10n.commonBack, onPressed: back),
+                ],
               ),
             ),
           ),
-        ),
-      ],
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 80),
+              child: Center(
+                child: EmptyView(
+                  icon: AppIcons.webApp,
+                  title: l10n.webDisabledTitle,
+                  message: l10n.webDisabledBody,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
-
 class _NotRunning extends ConsumerWidget {
   const _NotRunning({this.handle});
 
