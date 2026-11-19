@@ -178,6 +178,11 @@ class _BackupPageState extends State<BackupPage> {
           ),
         SettingsSection(
           title: '备份',
+          footer: Text(
+            '不备份聊天会话。备份文件在 App 的 Documents/backups 下，'
+            '用 Filza 或「文件」App 都能拷出来。',
+            style: theme.textTheme.bodySmall?.copyWith(color: dsh.textTertiary),
+          ),
           children: [
             SettingsTile(
               icon: AppIcons.download,
@@ -198,11 +203,6 @@ class _BackupPageState extends State<BackupPage> {
               onTap: null,
             ),
           ],
-          footer: Text(
-            '不备份聊天会话。备份文件在 App 的 Documents/backups 下，'
-            '用 Filza 或「文件」App 都能拷出来。',
-            style: theme.textTheme.bodySmall?.copyWith(color: dsh.textTertiary),
-          ),
         ),
         SettingsSection(
           title: '还原',
@@ -263,7 +263,6 @@ class _BackupTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final dsh = DshColors.of(context);
     final name = file.uri.pathSegments.last.replaceAll('.json', '');
     return SettingsTile(

@@ -983,6 +983,18 @@ abstract final class Spots {
   );
 
   // 隐私与分享.
+  /// 备份与还原那一行：设置里的参数存成一个文件。
+  ///
+  /// `isEntry`：它打开一整个页面（`opens`），不是页内的某个控件，
+  /// 所以搜索命中它时直接把页面推开。
+  static final backup = SettingSpot(
+    'backup',
+    page: SettingsPageId.privacy,
+    title: (l) => '备份与还原',
+    keywords: (l) => '备份,还原,导出,导入,backup,restore,export,import',
+    opens: SettingsPageId.backup,
+    link: 'backup',
+  );
   static final shareConfig = SettingSpot(
     'share-config',
     page: SettingsPageId.privacy,
@@ -1182,6 +1194,7 @@ final _rows = <SettingSpot>[
   Spots.notifyQuestion,
   Spots.notifyLive,
   Spots.notifySystem,
+  Spots.backup,
   Spots.shareConfig,
   Spots.usageStats,
   Spots.chatLogUpload,

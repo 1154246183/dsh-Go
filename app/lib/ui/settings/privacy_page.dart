@@ -15,7 +15,7 @@ import '../engine_settings/namespace_copy.dart';
 import '../engine_settings/schema_form.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
-import '../backup_page.dart';
+import 'backup_page.dart';
 import '../share_code/profile_share_sheet.dart';
 import '../share_hosted/hosted_links_tile.dart';
 import '../shell/page_frame.dart';
@@ -59,6 +59,12 @@ class PrivacyPage extends ConsumerWidget {
         // 设置里唯一谈「数据怎么处理」的地方,搁在这儿最好找。会话不进备份。
         SettingsSection(
           title: '备份',
+          footer: Text(
+            '把界面、模型与主机配置、预设、技能、App 偏好存成一个文件；不备份聊天会话。',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: DshColors.of(context).textTertiary,
+            ),
+          ),
           children: [
             SettingsTile(
               icon: AppIcons.archive,
@@ -70,12 +76,6 @@ class PrivacyPage extends ConsumerWidget {
               ),
             ),
           ],
-          footer: Text(
-            '把界面、模型与主机配置、预设、技能、App 偏好存成一个文件；不备份聊天会话。',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: DshColors.of(context).textTertiary,
-            ),
-          ),
         ),
         const UsageStatsSection(),
         if (engine != null && engine.served(logNamespace))
