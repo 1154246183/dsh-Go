@@ -87,11 +87,15 @@ class _WebDisabled extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    // 返回键：AppPage 自己的那个走 Navigator.maybePop()，在这一页上点不动
-    // （这一页是从抽屉 push 上来的普通路由，maybePop 却没退回去）。
-    // 不给它兜底的话人就被困在这儿了，所以这里显式放一个圆钮：
-    // 能 pop 就 pop，已经在最底层就 popUntilFirst —— 两种都回得到对话页。
-    void back() {
+    // 这一页原来左右两个返回键都点不动 —— 不是某一个键坏了，是整页的
+    // 点击都没落到控件上。所以把两个箭头全删掉：留着一个坏掉的键比没有更糟。
+    //
+    // 出口改到右上角（跟别的页面的操作位一致，那里本来就有玻璃圆钮，
+    // 点击是通的）：
+    //   · 还在栈里 → pop 回上一层；
+    //   · 已经在最底层 → popUntilFirst，一定回得到对话页。
+    // 再包一层 PopScope(canPop: true)，iOS 的边缘返回手势也能用。
+    void close() {
       final navigator = Navigator.of(context);
       if (navigator.canPop()) {
         navigator.pop();
@@ -101,7 +105,6 @@ class _WebDisabled extends ConsumerWidget {
     }
 
     return PopScope(
-      // 系统返回手势/返回键也要能出去，别被上层的 PopScope 吃掉。
       canPop: true,
       child: AppPage(
         title: l10n.commonWeb,
@@ -109,18 +112,9 @@ class _WebDisabled extends ConsumerWidget {
         actions: [
           // 网页模式当主页时，返回键由外面给；别的入口没有。
           ?handle?.call(44),
+          GlassIconButton(icon: AppIcons.close, tooltip: l10n.commonClose, onPressed: close),
         ],
         slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: Row(
-                children: [
-                  GlassIconButton(icon: AppIcons.back, tooltip: l10n.commonBack, onPressed: back),
-                ],
-              ),
-            ),
-          ),
           SliverFillRemaining(
             hasScrollBody: false,
             child: Padding(
