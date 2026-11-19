@@ -19,6 +19,7 @@ class AppSettings {
     this.autoStartLocalExplicit = true,
     this.autoApproveCommands = false,
     this.phoneStorage = false,
+    this.webEnabled = false,
     this.webPhoneLayout = true,
     this.hardwareEnterSends = false,
     this.chatTextScale = 1.0,
@@ -43,6 +44,17 @@ class AppSettings {
 
   /// Mount the phone's shared storage at /sdcard in the Linux environment.
   final bool phoneStorage;
+
+  /// 网页版总开关。**默认关**。
+  ///
+  /// 关着时 `LocalWebScreen` 不去碰引擎的 Web 服务，也不创建 WebView ——
+  /// 后者一起来就是一个独立的 `WebContent` 进程，常驻几十到上百 MB，
+  /// iOS 15 上很容易撞 per-process-limit 被系统杀掉。原生界面不走这条路，
+  /// 所以平时留着它只是白占内存。
+  ///
+  /// 打开之后和原来完全一样：入口照旧，WebView 照旧。
+  /// 这是「我要用网页版，所以愿意付这份内存」的显式选择。
+  final bool webEnabled;
 
   /// Fit the embedded DSH Web to a phone (`assets/web/`). Off shows the
   /// official layout untouched, e.g. to check a plugin that restyles it.
@@ -82,6 +94,7 @@ class AppSettings {
     bool? autoStartLocalExplicit,
     bool? autoApproveCommands,
     bool? phoneStorage,
+    bool? webEnabled,
     bool? webPhoneLayout,
     bool? hardwareEnterSends,
     double? chatTextScale,
@@ -96,6 +109,7 @@ class AppSettings {
     autoStartLocalExplicit: autoStartLocalExplicit ?? this.autoStartLocalExplicit,
     autoApproveCommands: autoApproveCommands ?? this.autoApproveCommands,
     phoneStorage: phoneStorage ?? this.phoneStorage,
+    webEnabled: webEnabled ?? this.webEnabled,
     webPhoneLayout: webPhoneLayout ?? this.webPhoneLayout,
     hardwareEnterSends: hardwareEnterSends ?? this.hardwareEnterSends,
     chatTextScale: chatTextScale ?? this.chatTextScale,
@@ -121,6 +135,9 @@ class SettingsController extends Notifier<AppSettings> {
   static const _autoApproveKey = 'auto_approve_commands';
   static const _phoneStorageKey = 'phone_storage';
   static const _webPhoneLayoutKey = 'web_phone_layout';
+  /// 网页版总开关。**没有存储值时按 false 读** —— 老用户升级上来也是关的，
+  /// 这正是这次要的效果：默认不加载网页版。
+  static const _webEnabledKey = 'web_enabled';
   static const _hardwareEnterKey = 'hardware_enter_sends';
   static const _chatTextScaleKey = 'chat_text_scale';
   static const _foldTurnsKey = 'fold_completed_turns';
@@ -167,6 +184,7 @@ class SettingsController extends Notifier<AppSettings> {
       autoApproveCommands: prefs.getBool(_autoApproveKey) ?? false,
       phoneStorage: prefs.getBool(_phoneStorageKey) ?? false,
       webPhoneLayout: prefs.getBool(_webPhoneLayoutKey) ?? true,
+      webEnabled: prefs.getBool(_webEnabledKey) ?? false,
       hardwareEnterSends: prefs.getBool(_hardwareEnterKey) ?? false,
       chatTextScale: _knownScale(prefs.getDouble(_chatTextScaleKey)),
       foldCompletedTurns: prefs.getBool(_foldTurnsKey) ?? true,
@@ -263,6 +281,13 @@ class SettingsController extends Notifier<AppSettings> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_webPhoneLayoutKey, value);
     state = state.copyWith(webPhoneLayout: value);
+  }
+
+  /// 网页版总开关。开 = 和以前一样；关 = 不碰 WebView、不起 WebContent。
+  Future<void> setWebEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_webEnabledKey, value);
+    state = state.copyWith(webEnabled: value);
   }
 
   Future<void> setHardwareEnterSends(bool value) async {

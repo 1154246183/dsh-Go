@@ -3,6 +3,8 @@
 // (when the engine has the sign-in bridge), then the custom providers of the
 // active engine (llm-pi-ai routes) and 「添加渠道」.
 
+import 'dart:async';
+
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +26,7 @@ import '../features/feature_kit.dart';
 import '../features/feature_widgets.dart';
 import '../onboarding/api_key_page.dart' show maskApiKey;
 import '../settings/index/spots.dart';
+import '../settings/settings_widgets.dart';
 import '../shell/page_frame.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
@@ -56,6 +59,10 @@ class ProvidersPage extends ConsumerWidget {
           ? null
           : Text(summary),
       children: [
+        // 网页版总开关。放在最上面:它决定的是「这台手机要不要为网页版
+        // 付那份内存」,和下面「用哪个模型」是同一层的决定。
+        // 关着时 LocalWebScreen 不建 WebView,也就不起 WebContent 进程。
+        const _WebToggleCard(),
         const NewChatDefaultsCard(),
         const _DeepSeekCard(),
         const _SubscriptionAccounts(),
@@ -133,6 +140,40 @@ String? _summary(WidgetRef ref, HostConnection? conn, ProvidersSnapshot? snapsho
   ].where((ok) => ok).length;
   final counts = appL10n.engineProvidersSummary(total, ready);
   return remote ? '${conn.label} · $counts' : counts;
+}
+
+/// 网页版总开关。
+///
+/// 关着的时候 `LocalWebScreen` 直接给一张说明页:不建 WebView、不算启动地址、
+/// 引擎那边也不会被这份需求拉起来。WebView 一起来就是一个独立的
+/// `WebContent` 进程,iOS 15 上几十到上百 MB,很容易撞 per-process-limit。
+/// 原生界面不走这条路,所以平时关着最省。
+///
+/// 打开之后和以前完全一样 —— 入口照旧、WebView 照旧。
+class _WebToggleCard extends ConsumerWidget {
+  const _WebToggleCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final enabled = ref.watch(settingsProvider.select((s) => s.webEnabled));
+    return SettingsSection(
+      title: l10n.commonWeb,
+      footer: enabled ? null : Text(l10n.webDisabledBody),
+      children: [
+        SettingsTile(
+          icon: AppIcons.webApp,
+          title: l10n.webEnabledLabel,
+          subtitle: enabled ? l10n.webEnabledOn : l10n.webEnabledOff,
+          trailing: Switch(
+            value: enabled,
+            onChanged: (v) => unawaited(ref.read(settingsProvider.notifier).setWebEnabled(v)),
+          ),
+          onTap: () => unawaited(ref.read(settingsProvider.notifier).setWebEnabled(!enabled)),
+        ),
+      ],
+    );
+  }
 }
 
 /// DeepSeek: the app's own account / API Key on 本机, the engine's catalog on

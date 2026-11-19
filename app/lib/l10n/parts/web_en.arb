@@ -1,5 +1,10 @@
 {
   "webTitle": "DSH Web",
+  "webDisabledTitle": "DSH Web is off",
+  "webDisabledBody": "While it’s off, the web UI isn’t loaded and its memory isn’t spent. Turn on DSH Web in Settings › Models to use it.",
+  "webEnabledLabel": "DSH Web",
+  "webEnabledOn": "On · the WebView is loaded",
+  "webEnabledOff": "Off · not loaded, saves memory",
   "webSshAppOnly": "SSH tunnel links only open in the app",
   "webRelayUnavailable": "DSH Web isn’t available through DSH Remote. Open it on that computer.",
   "webSshHost": "SSH host",

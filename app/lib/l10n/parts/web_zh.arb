@@ -1,5 +1,10 @@
 {
   "webTitle": "DSH 网页版",
+  "webDisabledTitle": "网页版已关闭",
+  "webDisabledBody": "关着的时候不会加载网页版，也不占那份内存。要用就去「设置 › 模型」打开「网页版」。",
+  "webEnabledLabel": "网页版",
+  "webEnabledOn": "已开启 · 会加载 WebView",
+  "webEnabledOff": "已关闭 · 不加载，省内存",
   "webSshAppOnly": "经 SSH 隧道的地址只能在 App 内打开",
   "webRelayUnavailable": "经 DSH Remote 中转时打不开网页版，请在那台电脑上打开",
   "webSshHost": "SSH 主机",

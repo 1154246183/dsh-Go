@@ -44,6 +44,14 @@ class LocalWebScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(localRuntimeProvider.select((s) => s.status));
     final phoneLayout = ref.watch(settingsProvider.select((s) => s.webPhoneLayout));
+    // 网页版总开关（设置 › 模型 › 网页版）。关着就**根本不建 WebView**：
+    // WebView 一起来就是一个独立的 WebContent 进程，常驻几十到上百 MB，
+    // iOS 15 上很容易撞 per-process-limit 被系统杀掉。这里提前返回，
+    // 连 localWebUri 都不算，引擎那边也不会被拉起来。
+    final webEnabled = ref.watch(settingsProvider.select((s) => s.webEnabled));
+    if (!webEnabled) {
+      return _WebDisabled(handle: handle);
+    }
     if (status.isRunning) {
       return WebViewPage(
         // A restart issues a new token, and the layout switch applies on
@@ -63,6 +71,45 @@ class LocalWebScreen extends ConsumerWidget {
       );
     }
     return _NotRunning(handle: handle);
+  }
+}
+
+/// 网页版总开关关着时看到的这一页。
+///
+/// 不建 WebView、不连引擎 —— 只有这样才真的省下那份内存。
+/// 这里不直接替用户打开开关：那等于悄悄把内存花回去。给一句话、
+/// 一个去设置的路，点不点由人定。
+class _WebDisabled extends ConsumerWidget {
+  const _WebDisabled({this.handle});
+
+  final Widget Function(double size)? handle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    return AppPage(
+      title: l10n.commonWeb,
+      showLargeTitle: false,
+      actions: [
+        // 网页模式当主页时，返回键由外面给；别的入口没有。
+        ?handle?.call(44),
+      ],
+      slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 80),
+            child: Center(
+              child: EmptyView(
+                icon: AppIcons.webApp,
+                title: l10n.webDisabledTitle,
+                message: l10n.webDisabledBody,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
