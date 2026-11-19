@@ -179,15 +179,23 @@ Future<void> copyPath(BuildContext context, String path) async {
 /// 在 Filza 里直达 [path]（越狱机才有 Filza；没有就退回复制路径）。
 ///
 /// Filza 的 Info.plist 只注册了 `filza` 一个 scheme（com.tigisoftware.Filza），
-/// 二进制里硬编码的入口只有两个常量：`filza://view` 和 `filza://license`。
-/// 所以能定位的写法只有一个：
+/// 二进制里写死的入口只有 `filza://view` 与 `filza://license`。
+/// 能定位的写法只有一种：**`view` 当 host，绝对路径当 path**，
+/// 形如 `filza://view/var/mobile/…/Application%20Support/…`。
 ///
-/// - `filza://view/<绝对路径>` — 直达并高亮目标。Filza 会对 host 之后的
-///   整段调用 stringByRemovingPercentEncoding，所以路径按整段编码一次，
-///   不能按 `/` 分段编码（分段会把分隔符留成裸 `/`，与 `%2F` 混在一起，
-///   空格和中文仍然会被当成原始字节）。
-/// - `filza:///` 也匹配 scheme，但走不到 view 处理器：只唤起、不定位。
-///   之前把它排在第一候选，所以每次都停在 Filza 首页。
+/// 这里有两个必须分开看的失败模式，都表现为「唤起 Filza 但停在首页」：
+///
+/// 1. `filza:///<绝对路径>`：scheme 匹配得上，但 host 为空，走不到 view
+///    处理器，只唤起不定位。
+/// 2. 把整条路径 `Uri.encodeComponent` 后拼在 `filza://view` 后面：开头的
+///    `/` 变成 `%2F`，`view` 与路径之间再没有真实分隔符，于是
+///    `view%2Fvar%2F…` 整串被当成 **host**。URL 规范化会把 host 里的字母
+///    转成小写，容器 UUID 从 `3E5F3EAD-…` 变成 `3e5f3ead-…`；iOS 数据卷
+///    APFS 区分大小写，Filza 因此找不到目录，退回首页。
+///
+/// 所以路径一律**按 `/` 分段编码**（分隔符保留裸 `/`，段内的空格、中文、
+/// `#`、`?`、`%` 各自转义），并且用 Uri 的 scheme/host/path 三段显式构造，
+/// 不靠字符串拼接去猜解析结果。
 ///
 /// launchUrl 返回 true 只说明「有 App 接管了这个 scheme」，不代表 Filza
 /// 真定位到了目标；因此这里不靠它判断是否高亮成功，只按候选顺序尝试。
@@ -195,12 +203,15 @@ Future<void> openInFilza(BuildContext context, String path) async {
   final l10n = context.l10n;
   final messenger = ScaffoldMessenger.maybeOf(context);
   final abs = path.startsWith('/') ? path : '/$path';
-  // 整段编码一次：Filza 自己解码，空格/中文/% 都能正确还原。
-  final encoded = Uri.encodeComponent(abs);
+  // 真实路径 `Uri.toString()` 后长这样：
+  //   filza://view/var/mobile/Library/Application%20Support/…/.dsh
   final uris = <Uri>[
-    Uri.parse('filza://view$encoded'), // filza://view/var/mobile/… 直达并高亮
-    Uri.parse('filza://'), // 至少唤起 Filza
-    Uri.parse('shareddocuments://${_encodeSharePath(abs)}'), // 没装 Filza 时交给「文件」
+    // 直达并高亮：host=view，path 保留大小写与分隔符。
+    Uri(scheme: 'filza', host: 'view', path: abs),
+    // 至少唤起 Filza（目标不存在时也不至于毫无反应）。
+    Uri.parse('filza://'),
+    // 没装 Filza 时交给「文件」。
+    Uri.parse('shareddocuments://${_encodeSharePath(abs)}'),
   ];
   for (final uri in uris) {
     var opened = false;

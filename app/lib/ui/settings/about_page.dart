@@ -176,20 +176,27 @@ class AboutPage extends ConsumerWidget {
   ///
   /// Filza（com.tigisoftware.Filza）的 Info.plist 只注册了 `filza` 一个
   /// scheme，二进制里写死的入口只有 `filza://view` 与 `filza://license`。
-  /// 因此只有 `filza://view/<绝对路径>` 会定位并高亮目标；
-  /// `filza:///<绝对路径>` 同样匹配 scheme，却走不到 view 处理器，
-  /// 表现为「唤起 Filza 但停在首页」——之前把它排在第一位就是症状来源。
+  /// 因此只有 **`view` 当 host、绝对路径当 path** 的写法会定位并高亮目标：
+  /// `filza://view/var/mobile/Library/Application%20Support/…`。
   ///
-  /// 路径整段百分号编码一次：Filza 对 view 之后的部分调用
-  /// stringByRemovingPercentEncoding，分段编码反而会把分隔符留成裸 `/`，
-  /// 空格与中文因此还原不回来。
+  /// 两种「唤起 Filza 却停在首页」的写法都在这里踩过：
+  ///
+  /// 1. `filza:///<绝对路径>`：scheme 匹配得上，但 host 为空，走不到 view
+  ///    处理器，只唤起不定位；
+  /// 2. 整条路径 `Uri.encodeComponent` 后拼在 `filza://view` 后面：开头的
+  ///    `/` 变成 `%2F`，`view` 与路径之间没有真实分隔符，`view%2Fvar%2F…`
+  ///    整串被当成 **host**，URL 规范化把字母转小写，容器 UUID 从
+  ///    `3E5F3EAD-…` 变成 `3e5f3ead-…`；iOS 数据卷 APFS 区分大小写，
+  ///    Filza 找不到目录就退回首页。
+  ///
+  /// 所以按 `/` 分段编码，并用 Uri 的 scheme/host/path 显式构造。
   ///
   /// 打不开就把路径复制给用户，至少不让人白点。
   static Future<bool> revealInFilza(String path) async {
     final clean = path.startsWith('/') ? path : '/' + path;
-    final encoded = Uri.encodeComponent(clean);
+    final target = Uri(scheme: 'filza', host: 'view', path: clean);
     for (final uri in <Uri>[
-      Uri.parse('filza://view' + encoded), // 定位并高亮
+      target, // 定位并高亮
       Uri.parse('filza://'), // 至少唤起 Filza
     ]) {
       try {
