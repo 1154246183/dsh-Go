@@ -155,7 +155,27 @@ class _HomeShellState extends ConsumerState<HomeShell> with TickerProviderStateM
 
   void _closeDrawer() => _slideClosed(_drawer);
 
+  void _openQuickPanel() => _slideOpen(_quickPanel);
+
   void _closeQuickPanel() => _slideClosed(_quickPanel);
+
+  /// The swipe only starts within this much of the screen edge, [edge] px wide,
+  /// on the side the panel comes from.
+  ///
+  /// The gesture used to work anywhere on the chat, which meant a horizontal
+  /// drag over a message — selecting text, dragging a quote out, a code block's
+  /// own sideways scroll — could be claimed by the drawer or the quick panel
+  /// instead. An edge start matches iOS's own back-swipe and leaves the middle
+  /// of the screen entirely to the text; the header buttons open both panels
+  /// without a swipe at all.
+  static const double _edge = 24;
+
+  /// Whether [globalX] is a legal start for the side whose [openingSign] is
+  /// given (+1 the drawer, from the left; -1 the quick panel, from the right).
+  bool _startsAtEdge(double globalX, {required double openingSign}) {
+    final width = MediaQuery.sizeOf(context).width;
+    return openingSign > 0 ? globalX <= _edge : globalX >= width - _edge;
+  }
 
   void _revealChat(bool animate) {
     for (final side in [_drawer, _quickPanel]) {
@@ -246,7 +266,10 @@ class _HomeShellState extends ConsumerState<HomeShell> with TickerProviderStateM
     });
   }
 
-  /// The drawer's swipe (right to open, left to push back).
+  /// The drawer's swipe (right to open, left to push back), from the left edge.
+  ///
+  /// Once the drawer is open the whole screen belongs to it again: the push-back
+  /// swipe starts wherever the finger is, not only at the edge.
   Map<Type, GestureRecognizerFactory> get _drawerGestures => {
     DrawerDragRecognizer: GestureRecognizerFactoryWithHandlers<DrawerDragRecognizer>(
       () => DrawerDragRecognizer(
@@ -254,13 +277,14 @@ class _HomeShellState extends ConsumerState<HomeShell> with TickerProviderStateM
         onStart: () => _onDragStart(_drawer),
         onDelta: (dx) => _onDragDelta(_drawer, _drawerWidth(context), dx),
         onEnd: (velocity) => _onDragEnd(_drawer, _drawerWidth(context), velocity),
+        allowsStart: (x) => _drawer.value > 0 || _startsAtEdge(x, openingSign: 1),
         debugOwner: this,
       ),
       (_) {},
     ),
   };
 
-  /// The quick panel's swipe (left to open, right to push back).
+  /// The quick panel's swipe (left to open, right to push back), from the right edge.
   Map<Type, GestureRecognizerFactory> get _quickPanelGestures {
     final settings = MediaQuery.maybeGestureSettingsOf(context);
     return {
@@ -270,6 +294,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with TickerProviderStateM
           onStart: () => _onDragStart(_quickPanel),
           onDelta: (dx) => _onDragDelta(_quickPanel, _quickPanelWidth(context), -dx),
           onEnd: (velocity) => _onDragEnd(_quickPanel, _quickPanelWidth(context), -velocity),
+          allowsStart: (x) => _quickPanel.value > 0 || _startsAtEdge(x, openingSign: -1),
           debugOwner: this,
         ),
         (recognizer) => recognizer.gestureSettings = settings,
@@ -303,7 +328,8 @@ class _HomeShellState extends ConsumerState<HomeShell> with TickerProviderStateM
         if (mounted) _quickPanel.value = 0;
       });
     }
-    final chat = widget.chatBuilder?.call(_onMenu) ?? ChatScreen(onOpenDrawer: _onMenu, backdrop: false);
+    final chat = widget.chatBuilder?.call(_onMenu) ??
+        ChatScreen(onOpenDrawer: _onMenu, onOpenQuickPanel: quickPanelOn ? _openQuickPanel : null, backdrop: false);
     // The floating pet outside the app hears every pet state.
     ref.listen<void>(petOverlayBridgeProvider, (_, _) {});
     return SafeModeNoticeListener(

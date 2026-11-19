@@ -40,8 +40,19 @@ class DrawerDragRecognizer extends OneSequenceGestureRecognizer {
     required this.onStart,
     required this.onDelta,
     required this.onEnd,
+    this.allowsStart,
     super.debugOwner,
   });
+
+  /// 这个全局横坐标上起手,是否允许本识别器接管。
+  ///
+  /// 传 null 是旧的整屏行为。挂载方用它把抽屉/面板限制在**屏幕边缘起手**:
+  /// 落在中间的横向滑动一律不接,交给手指下的控件 —— 选文本、拖引用、
+  /// 代码块横滚都回到文本手里,只有从边上往里滑才拉面板。
+  ///
+  /// 判定看的是 **pointer down 的落点**,不是过 slop 之后的位置:边缘手势
+  /// 本来就该「从边上开始」,起手在中间再滑到边上不算。
+  final bool Function(double globalX)? allowsStart;
 
   /// 抽屉当前是否已经打开(哪怕只开了一部分)。
   ///
@@ -88,6 +99,9 @@ class DrawerDragRecognizer extends OneSequenceGestureRecognizer {
   bool _accepted = false;
   VelocityTracker? _velocity;
 
+  /// 本次手势的起手点横坐标(全局坐标)。边缘判定用它,不跟着手指更新。
+  double _downX = 0;
+
   @override
   String get debugDescription => 'drawer drag';
 
@@ -96,10 +110,19 @@ class DrawerDragRecognizer extends OneSequenceGestureRecognizer {
     _accum = Offset.zero;
     _accepted = false;
     _velocity = VelocityTracker.withKind(event.kind);
+    _downX = event.position.dx;
     startTrackingPointer(event.pointer, event.transform);
     // 抽屉开着也**不能**在这里表态:立刻 accept 会让竞技场当场拒掉同一点位上
     // 的 TapGestureRecognizer,抽屉里的会话项就点不动了(见类文档)。方向判定
     // 一律推迟到第一个 PointerMoveEvent,松手前没位移的点击完整放行。
+    //
+    // 唯一在 down 时就能定的否决是「起手不在边缘」:没位移就没有别的意思,
+    // 直接退出竞技场不会抢走谁的点击。
+    final gate = allowsStart;
+    if (gate != null && !gate(_downX)) {
+      resolve(GestureDisposition.rejected);
+      stopTrackingPointer(event.pointer);
+    }
   }
 
   @override
@@ -186,6 +209,7 @@ class QuickPanelDragRecognizer extends DrawerDragRecognizer {
     required super.onStart,
     required super.onDelta,
     required super.onEnd,
+    super.allowsStart,
     super.debugOwner,
   });
 

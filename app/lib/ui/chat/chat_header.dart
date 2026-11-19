@@ -54,6 +54,7 @@ class ChatHeader extends ConsumerStatefulWidget {
     this.detail,
     this.trailing,
     this.onOpenDrawer,
+    this.onOpenQuickPanel,
     this.onTitleTap,
     this.onNewChat,
     this.scrolledUnder,
@@ -70,6 +71,12 @@ class ChatHeader extends ConsumerStatefulWidget {
   /// Null: the title has the room.
   final Widget? trailing;
   final VoidCallback? onOpenDrawer;
+
+  /// Opens 快捷入口, the panel that slides in from the right.
+  ///
+  /// The panel's swipe now only starts at the screen's right edge, so this key
+  /// is the way in from the middle of the screen. Null: no key (no panel).
+  final VoidCallback? onOpenQuickPanel;
   final VoidCallback? onTitleTap;
   final VoidCallback? onNewChat;
 
@@ -287,6 +294,31 @@ class _ChatHeaderState extends ConsumerState<ChatHeader> {
                                     child: Tooltip(
                                       message: l10n.commonNewChat,
                                       child: Center(child: Icon(AppIcons.newChat, size: 22, color: colors.onSurface)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+                      // 快捷入口: the panel's swipe only starts at the right edge
+                      // now, so this is the way in from the middle of the screen.
+                      // It replaces that swipe for anyone who can't reach the edge.
+                      SmoothSize(
+                        duration: AppMotion.of(context, AppMotion.quick),
+                        child: widget.onOpenQuickPanel == null
+                            ? const SizedBox.shrink()
+                            : Padding(
+                                padding: const EdgeInsets.only(left: HeaderTrailingSlot.gap),
+                                child: SizedBox.square(
+                                  key: const ValueKey('chat-quick-panel'),
+                                  dimension: 44,
+                                  child: GlassSurface(
+                                    tier: GlassTier.chrome,
+                                    circle: true,
+                                    grouped: true,
+                                    onTap: widget.onOpenQuickPanel,
+                                    child: Tooltip(
+                                      message: l10n.shellQuickPanel,
+                                      child: Center(child: Icon(AppIcons.panel, size: 22, color: colors.onSurface)),
                                     ),
                                   ),
                                 ),

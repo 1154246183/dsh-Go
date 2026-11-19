@@ -108,10 +108,15 @@ import 'widgets/unknown_results_banner.dart';
 /// 读 [currentSessionProvider];为 null 时是"新对话"空状态,第一次发送时
 /// 才建会话(create → select → send)。
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key, this.onOpenDrawer, this.backdrop = true});
+  const ChatScreen({super.key, this.onOpenDrawer, this.onOpenQuickPanel, this.backdrop = true});
 
   /// Opens the sessions drawer (the shell owns the drawer).
   final VoidCallback? onOpenDrawer;
+
+  /// Opens 快捷入口 (the shell owns that panel too). The panel's swipe now only
+  /// starts at the screen's right edge, so the header key is the way in from
+  /// the middle of the screen.
+  final VoidCallback? onOpenQuickPanel;
 
   /// False when the shell already paints the page backdrop.
   final bool backdrop;
@@ -1699,6 +1704,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                 ),
                               ),
                         onOpenDrawer: widget.onOpenDrawer,
+                        onOpenQuickPanel: widget.onOpenQuickPanel,
                         onNewChat: sessionId == null || isChild
                             ? null
                             : () {
