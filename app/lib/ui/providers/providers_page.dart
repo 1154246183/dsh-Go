@@ -26,7 +26,9 @@ import '../features/feature_kit.dart';
 import '../features/feature_widgets.dart';
 import '../onboarding/api_key_page.dart' show maskApiKey;
 import '../settings/index/spots.dart';
-import '../settings/settings_widgets.dart';
+// 只取这两个：dsh_client 里也导出了一个同名的 SettingsSection（features_api），
+// 整个 import 进来会和它撞名，analyze 直接报 'isn't a function'。
+import '../settings/settings_widgets.dart' show SettingsSection, SettingsTile;
 import '../shell/page_frame.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
