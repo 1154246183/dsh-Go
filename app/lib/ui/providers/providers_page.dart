@@ -26,9 +26,11 @@ import '../features/feature_kit.dart';
 import '../features/feature_widgets.dart';
 import '../onboarding/api_key_page.dart' show maskApiKey;
 import '../settings/index/spots.dart';
-// 只取这两个：dsh_client 里也导出了一个同名的 SettingsSection（features_api），
-// 整个 import 进来会和它撞名，analyze 直接报 'isn't a function'。
-import '../settings/settings_widgets.dart' show SettingsSection, SettingsTile;
+// 前缀导入：dsh_client（features_api）导出的 SettingsSection 和
+// settings_widgets 里的同名，两者都是无前缀导入时 analyze 直接报
+// 'isn't a function' —— `show` 挡不住，因为冲突来自两个库同时可见。
+// 这个文件本来就要用 dsh_client 的一堆类型，所以让步的是设置组件这边。
+import '../settings/settings_widgets.dart' as settings_ui;
 import '../shell/page_frame.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
@@ -159,11 +161,11 @@ class _WebToggleCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final enabled = ref.watch(settingsProvider.select((s) => s.webEnabled));
-    return SettingsSection(
+    return settings_ui.SettingsSection(
       title: l10n.commonWeb,
       footer: enabled ? null : Text(l10n.webDisabledBody),
       children: [
-        SettingsTile(
+        settings_ui.SettingsTile(
           icon: AppIcons.webApp,
           title: l10n.webEnabledLabel,
           subtitle: enabled ? l10n.webEnabledOn : l10n.webEnabledOff,
