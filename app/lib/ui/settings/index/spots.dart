@@ -80,6 +80,7 @@ enum SettingsPageId {
   background,
   systemAccess,
   privacy,
+  backup,
   sharedLinks,
   engine,
   remote,
@@ -510,6 +511,15 @@ final _pages = <SettingsPageMeta>[
     group: _general,
     keywords: (l) => l.searchKwPrivacy,
     links: const ['privacy'],
+  ),
+  // 备份与还原：设置里的参数存成一个文件。就是「隐私与分享」那一页里的
+  // 一行，所以 parent 指过去；标题用字面量，不新增 l10n 键。
+  SettingsPageMeta(
+    SettingsPageId.backup,
+    title: (l) => '备份与还原',
+    parent: SettingsPageId.privacy,
+    keywords: (l) => '备份,还原,导出,导入,backup,restore,export,import',
+    links: const ['backup', 'restore'],
   ),
   SettingsPageMeta(
     SettingsPageId.sharedLinks,
