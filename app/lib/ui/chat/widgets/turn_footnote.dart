@@ -22,21 +22,29 @@ class TurnFootnote extends StatelessWidget {
   /// What plugins say about this turn (`turn.note`): the first thing to go when it doesn't fit.
   final NativeTurnNotes? notes;
 
-  /// 时刻：`23:08`。脚注只报「这轮是什么时候生成的」，
+  /// 时刻：`11/19 09:46`。脚注只报「这轮是什么时候生成的」，
   /// 时长、步数、花费、tokens 全部放进本轮轨迹详情，避免和下面那排重复。
+  ///
+  /// 日期带上月/日：跨天的长对话里只有一个 `09:46`，分不清是哪天的。
+  /// 月份和日都不补零（`11/9`），省下来的宽度留给更长的注记。
   static String _clock(DateTime time) {
     final local = time.toLocal();
     String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(local.hour)}:${two(local.minute)}';
+    return '${local.month}/${local.day} ${two(local.hour)}:${two(local.minute)}';
   }
 
   /// 从全到简的几种写法(第一种放得下就用它)。
-  /// 只有时刻与插件注记两种成分，放不下就先丢注记。
+  /// 先丢日期，再丢插件注记：窄屏上至少还剩一个时刻。
   static List<String> variants(TurnTrace trace, {String? note}) {
+    final local = trace.start.toLocal();
     final clock = _clock(trace.start);
+    final withDate = note != null && note.isNotEmpty ? '$clock · $note' : clock;
+    final time = '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
     return [
-      if (note != null && note.isNotEmpty) '$clock · $note',
+      withDate,
       clock,
+      if (note != null && note.isNotEmpty) '$time · $note',
+      time,
     ];
   }
 

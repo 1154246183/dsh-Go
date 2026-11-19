@@ -68,15 +68,25 @@ class _ChangeDiffPageState extends State<ChangeDiffPage> {
     super.dispose();
   }
 
+  /// 点一个文件标签：先把高亮切过去，再让页面滚过去。
+  ///
+  /// 高亮原来是等 [PageView.onPageChanged] 回来才更新的。动画被打断
+  /// （手指碰了一下、另一枚 chip 又被点了）时那个回调不保证会来，
+  /// 于是 `_index` 停在原处——标签看着毫无反应，像是点不动。
+  /// 现在同一步里就 `setState`，反馈立刻有，动画只负责把内容带过去。
   void _select(int index) {
     if (index == _index) return;
-    _pages.animateToPage(index, duration: AppMotion.of(context, AppMotion.standard), curve: AppMotion.std);
+    setState(() => _index = index);
+    // 控制器还没挂上（首帧、或被别处 detach）时只切高亮，不硬滚。
+    if (_pages.hasClients) {
+      _pages.animateToPage(index, duration: AppMotion.of(context, AppMotion.standard), curve: AppMotion.std);
+    }
   }
 
   void _onPage(int index) {
-    setState(() => _index = index);
+    if (index != _index) setState(() => _index = index);
     final chip = _chipKeys[index]?.currentContext;
-    if (chip != null) {
+    if (chip != null && chip.mounted) {
       Scrollable.ensureVisible(
         chip,
         alignment: 0.5,
@@ -277,26 +287,36 @@ class _FileChip extends StatelessWidget {
       label: l10n.activityDiffFileSemantics(file.shownPath, file.added, file.removed),
       excludeSemantics: true,
       onTap: onTap,
-      child: selected
-          ? Material(
-              color: colors.primaryContainer,
-              shape: StadiumBorder(side: BorderSide(color: colors.primary.withValues(alpha: 0.35), width: 0.8)),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: onTap,
-                child: Padding(
+      // 点击手势挂在**两种状态共用的外层**,不交给 GlassSurface 内部那层：
+      // 玻璃面在未选中时还要过 BackdropFilter + 裁剪,手势偶尔就丢在中间,
+      // 表现成「只有当前选中的那枚能点」。这里用一块透明的 InkWell 兜住
+      // 整个标签,选中与否都由它接。
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const StadiumBorder(),
+          child: selected
+              ? DecoratedBox(
+                  decoration: ShapeDecoration(
+                    color: colors.primaryContainer,
+                    shape: StadiumBorder(
+                      side: BorderSide(color: colors.primary.withValues(alpha: 0.35), width: 0.8),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Center(child: label),
+                  ),
+                )
+              : GlassSurface(
+                  tier: GlassTier.pill,
+                  stadium: true,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   child: Center(child: label),
                 ),
-              ),
-            )
-          : GlassSurface(
-              tier: GlassTier.pill,
-              stadium: true,
-              onTap: onTap,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Center(child: label),
-            ),
+        ),
+      ),
     );
   }
 }
