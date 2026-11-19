@@ -52,12 +52,30 @@ const List<String> _dirs = <String>[
 ///
 /// `.credentials.yaml` 默认不算进来（见 [includeCredentials]）：它装的是
 /// 各家模型的 key，跟着备份文件复制到别处等于把钥匙抄了一份。
-const List<String> _files = <String>[
+///
+/// 这里**一票否决**那些写着绝对容器路径的文件：
+///   ios-container-paths.json、ios-host.patch.json、ohos-host.patch.json、
+///   ohos-ownership/ —— 它们把
+///   `/var/mobile/Containers/Data/Application/<UUID>/...` 原样记了下来，
+///   而重装 App 后系统一定会发新的 UUID。这类文件搬回来只会指向不存在的路径，
+///   轻则 host 插件加载失败，重则 App 起不来。它们描述的是「这一次安装」的
+///   运行态，不是你的设置，所以不在备份范围内（还原时也会被跳过，
+///   见 [restoreBackup]）。
+const List<String> _files = <String>[];
+
+/// 备份里不该出现的路径前缀：含绝对容器路径的运行态文件。
+///
+/// 两条用途：备份时跳过（老备份里可能还有），还原时也跳过 ——
+/// 让旧备份在新容器上也能安全落地。
+const List<String> _containerBound = <String>[
+  'ios-container-paths.json',
   'ios-host.patch.json',
   'ohos-host.patch.json',
-  'ios-container-paths.json',
-  'ohos-ownership',
+  'ohos-ownership/',
 ];
+
+/// [rel] 是不是那种「绑死在这次安装上」的运行态文件。
+bool _isContainerBound(String rel) => _containerBound.any((p) => rel == p || rel.startsWith(p));
 
 /// `.dsh` 根目录。和「帮助与关于」里用的是同一个位置。
 Future<Directory?> dshDataDir() async {
@@ -114,16 +132,15 @@ Future<BackupResult> createBackup({bool includeCredentials = false, String? note
   final files = <String, String>{};
 
   void collect(String rel, File file) {
+    // 绑死在这台设备这次安装上的运行态文件，一律不收：重装后 UUID 变了，
+    // 放回去只会指向不存在的路径。
+    if (_isContainerBound(rel)) return;
     try {
       // 配置都是文本；按 UTF-8 收，坏了就跳过（宁可少一个文件，也不要生成打不开的备份）。
       files[rel] = file.readAsStringSync();
     } catch (_) {}
   }
 
-  for (final name in _files) {
-    final f = File('${home.path}/$name');
-    if (f.existsSync()) collect(name, f);
-  }
   if (includeCredentials) {
     final f = File('${home.path}/.credentials.yaml');
     if (f.existsSync()) collect('.credentials.yaml', f);
@@ -224,6 +241,12 @@ Future<RestoreResult> restoreBackup(
       continue;
     }
     if (rel.startsWith('sessions/') || rel.startsWith('attachments/')) {
+      skipped++;
+      continue;
+    }
+    // 旧备份里可能还留着含绝对容器路径的运行态文件。重装后 UUID 已经变了，
+    // 写回去就是一批死路径 —— 跳过，让旧备份也能在新容器上安全还原。
+    if (_isContainerBound(rel)) {
       skipped++;
       continue;
     }
