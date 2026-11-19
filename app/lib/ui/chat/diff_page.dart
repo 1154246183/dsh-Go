@@ -623,18 +623,6 @@ class _FileHeader extends StatelessWidget {
     await openInFilza(context, abs);
   }
 
-  /// 复制时优先给绝对路径：粘到 Filza 或终端里直接能用。
-  Future<void> _copyPath(BuildContext context) async {
-    final session = sessionId;
-    var value = file.path;
-    if (session != null) {
-      final abs = await _hostPathOf(context, session, file.path);
-      if (abs != null) value = abs;
-    }
-    if (!context.mounted) return;
-    await copyPath(context, value);
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -675,27 +663,24 @@ class _FileHeader extends StatelessWidget {
               ],
             ),
           ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (canFilza)
-                TextButton.icon(
-                  onPressed: () => _revealInFilza(context),
-                  icon: const Icon(AppIcons.files, size: 16),
-                  label: const Text('Filza'),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(0, 36),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
+          // Filza 修好以后就没必要再给「复制路径」了：那个按钮本来就是
+          // 跳不过去时的手动兜底。这里只留 Filza 一个，并且给足尺寸——
+          // 它是文件头唯一的动作，值得按主按钮来做，不再是挤在角落的小字。
+          if (canFilza)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: FilledButton.tonalIcon(
+                onPressed: () => _revealInFilza(context),
+                icon: const Icon(AppIcons.files, size: 20),
+                label: const Text('Filza'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  minimumSize: const Size(0, 44),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: theme.textTheme.titleSmall,
                 ),
-              TextButton.icon(
-                onPressed: () => _copyPath(context),
-                icon: const Icon(AppIcons.link, size: 16),
-                label: Text(l10n.activityDiffCopyPath),
               ),
-            ],
-          ),
+            ),
         ],
       ),
     );
