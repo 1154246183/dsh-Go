@@ -25,6 +25,7 @@ import '../../pets/pet_perch.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
 import 'chat_plugins_sheet.dart';
+import 'plugin_capsule_gate.dart';
 import 'native_taps.dart';
 import 'rise_reveal.dart';
 
@@ -273,7 +274,7 @@ class _ComposerCapsuleBarState extends ConsumerState<ComposerCapsuleBar> {
     final session = widget.sessionId;
     final items = [
       ...composerCapsules(context, ref, sessionId: session, quick: quick, plugins: plugins),
-      if (!hidePluginCapsule && session != null && ref.watch(chatPluginsHaveContentProvider(session)))
+      if (!hidePluginCapsule && session != null && ref.watch(pluginCapsuleHasContentProvider(session)))
         CapsuleItem(
           id: chatPluginsCapsuleId,
           label: context.l10n.plugslotsChatEntry,
