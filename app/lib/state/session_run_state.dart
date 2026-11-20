@@ -107,7 +107,7 @@ class SessionRunStateController extends Notifier<Map<String, SessionRunState>> {
     _hostSub = client.hostEvents.listen(_onHostEvent, onError: (Object _) {});
 
     // 订阅跟着会话列表走：新会话订阅上，走掉的取消。
-    ref.listen<List<SessionSummary>>(
+    ref.listen<AsyncValue<List<SessionSummary>>>(
       sessionsProvider,
       (_, next) {
         final list = next.value;
