@@ -227,6 +227,19 @@ class PluginPanelSheet extends ConsumerWidget {
                   if (panels.isNotEmpty) const SizedBox(height: ChatPluginsMetrics.gap + 4),
                   _WebPlugins(web: mine, sessionId: sessionId),
                 ],
+                if (panels.isEmpty && mine.isEmpty) ...[
+                  // 这个插件没有聊天界面：它的入口只有设置。
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+                    child: Text(
+                      l10n.plugslotsChatNoPanel,
+                      key: const ValueKey('chat-plugin-no-panel'),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: DshColors.of(context).textTertiary,
+                      ),
+                    ),
+                  ),
+                ],
                 if (bundle != null) ...[
                   const SizedBox(height: ChatPluginsMetrics.gap),
                   ListPageCard(
@@ -236,6 +249,7 @@ class PluginPanelSheet extends ConsumerWidget {
                         key: ValueKey('chat-plugin-settings|$package'),
                         icon: AppIcons.settings,
                         title: l10n.commonSettings,
+                        subtitle: bundle.title(),
                         chevron: true,
                         onTap: () => unawaited(showBundleSheet(context, bundle)),
                       ),
@@ -269,10 +283,13 @@ class ChatPluginsSheet extends ConsumerWidget {
         if (context.mounted) unawaited(Navigator.of(context).maybePop());
       });
     }
-    // 第一层只列插件名；点名字才进它自己的面板与设置。
+    // 第一层列出这台主机上的所有第三方插件，不只是注册了聊天面板的那些：
+    // 破甲、图像与视频这类插件只在设置里有界面，没有 chat.panel。
+    // 点名字才进它自己的面板与设置。
     final bundles = ref.watch(installedPluginsProvider.select((s) => s.value));
     final entries = <({String package, String title})>[];
     final seen = <String>{};
+    // 有聊天面板或网页部分的插件，按它们的界面名。
     for (final panel in native) {
       if (seen.add(panel.package)) {
         final title = ref.watch(nativePluginTitleProvider(panel.package));
@@ -289,6 +306,12 @@ class ChatPluginsSheet extends ConsumerWidget {
           title: seatBundleOf(bundles, package)?.title() ?? package,
         ));
       }
+    }
+    // 其余已装的第三方插件：没有聊天界面，入口是它的设置。
+    for (final bundle in bundles ?? const <PluginBundle>[]) {
+      if (bundleGroup(bundle) != BundleGroup.installed) continue;
+      if (!seen.add(bundle.name)) continue;
+      entries.add((package: bundle.name, title: bundle.title()));
     }
     entries.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return DraggableScrollableSheet(
