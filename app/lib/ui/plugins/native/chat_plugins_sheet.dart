@@ -19,7 +19,7 @@
 
 import 'dart:async';
 
-import 'package:dsh_client/dsh_client.dart' show DshGoPanel;
+import 'package:dsh_client/dsh_client.dart' show DshGoPanel, PluginBundle;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
