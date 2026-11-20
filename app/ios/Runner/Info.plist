@@ -185,5 +185,11 @@
 	<string>Picks images to send to DSH as attachments.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Saves generated images to your photo library.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>filza</string>
+		<string>Filza</string>
+		<string>shareddocuments</string>
+	</array>
 </dict>
 </plist>
