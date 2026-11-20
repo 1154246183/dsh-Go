@@ -202,6 +202,41 @@ jobs:
           echo "dsh-purge size: $(du -sh "$dest" | cut -f1)"
           ls -la "$dest"
 
+      - name: Bundle dsh-media (image & video)
+        run: |
+          # 图像与视频：源码就在本仓库 runtime/media/dsh-media，不走 npm，
+          # 构建可复现。整份 src/ 复制：package.json 的 files 清单已过时，
+          # 实际还有 provider-client / provider-protocol / generated-digests。
+          # test/ 不进包。
+          app="app/build/ios/iphoneos/Runner.app"
+          dest="$app/builtin-plugins/@ccch1mneyyy/dsh-media"
+          src="runtime/media/dsh-media"
+          test -f "$src/package.json" || {
+            echo '::error title=plugin::runtime/media/dsh-media 不在仓库里'; exit 1; }
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          cp -R "$src/src" "$dest/src"
+          cp -R "$src/data" "$dest/data"
+          rm -rf "$dest/src/test" "$dest/test"
+          for item in package.json cordis.patch.yml README.md LICENSE; do
+            [ -e "$src/$item" ] && cp "$src/$item" "$dest/" || true
+          done
+          test -f "$dest/src/index.js" || {
+            echo '::error title=plugin::dsh-media 的 src/index.js 没落进包里'; exit 1; }
+
+          # 唯一的第三方运行时依赖：image-size 2.0.2（package.json 钉死）。
+          # @deepseek-ai/* 都是 peer，由宿主运行时提供，不打进来。
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/image-size.tgz" https://registry.npmjs.org/image-size/-/image-size-2.0.2.tgz
+          mkdir -p "$RUNNER_TEMP/image-size"
+          tar -xzf "$RUNNER_TEMP/image-size.tgz" -C "$RUNNER_TEMP/image-size" --strip-components=1
+          rm -rf "$dest/node_modules"
+          mkdir -p "$dest/node_modules"
+          cp -R "$RUNNER_TEMP/image-size" "$dest/node_modules/image-size"
+          test -f "$dest/node_modules/image-size/dist/index.mjs" || {
+            echo '::error title=plugin::image-size 没落进包里'; exit 1; }
+          echo "dsh-media size: $(du -sh "$dest" | cut -f1)"
+          ls -la "$dest"
+
       - name: Sign with the HID entitlement
         run: |
           brew install ldid || true
