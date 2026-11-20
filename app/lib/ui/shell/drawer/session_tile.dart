@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../l10n/l10n.dart';
 import '../../../state/session_attention_state.dart';
+import '../../../state/session_run_state.dart';
 import '../../common/status_dot.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
@@ -23,6 +24,7 @@ class SessionTile extends StatelessWidget {
     required this.onTap,
     required this.onLongPress,
     this.pending,
+    this.mark,
     this.unread = false,
     this.pinned = false,
     this.indent = 0,
@@ -38,6 +40,12 @@ class SessionTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final PendingKind? pending;
+
+  /// 这一行要显示的状态标签；null 表示没有要说的。
+  ///
+  /// 由抽屉算好传进来：它要看事件流、待确认和未读三份状态。
+  final SessionMark? mark;
+
   final bool unread;
 
   /// Shown as a small pin (inside folders; elsewhere 置顶 says it).
@@ -68,26 +76,22 @@ class SessionTile extends StatelessWidget {
     final colors = DshColors.of(context);
     final shape = Squircle.border(AppShape.md);
     final highlighted = selecting ? selected : current;
-    // 一行最多一个标记：待确认 > 运行中 > 未读。都是带颜色的小标签，
-    // 不再只用圆点——圆点看久了分不清那几个色到底哪个是哪个。
-    final Widget? marker = switch ((pending, running, unread)) {
-      (final PendingKind kind, _, _) => _StateChip(
-        key: const ValueKey('pending'),
-        label: kind.label,
-        tone: StatusTone.warn,
-      ),
-      (_, true, _) => const _StateChip(
-        key: ValueKey('running'),
-        label: '思考中',
-        tone: StatusTone.busy,
-      ),
-      (_, _, true) => const _StateChip(
-        key: ValueKey('unread'),
-        label: '已完成',
-        tone: StatusTone.ok,
-      ),
-      _ => null,
-    };
+    // 一行最多一个标记：待确认 > 出错了 > 思考中 > 任务中 > 已完成。
+    // 都是带颜色的小标签，不再只用圆点——圆点看久了分不清哪个色是哪个。
+    final shown = mark;
+    final Widget? marker = shown == null
+        ? null
+        : _StateChip(
+            key: ValueKey('mark-${shown.name}'),
+            label: shown.label,
+            tone: switch (shown) {
+              SessionMark.pending => StatusTone.warn,
+              SessionMark.failed => StatusTone.error,
+              SessionMark.thinking => StatusTone.busy,
+              SessionMark.working => StatusTone.warn,
+              SessionMark.done => StatusTone.ok,
+            },
+          );
     final label = [
       title,
       ?pending?.label,
