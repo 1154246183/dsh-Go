@@ -29,7 +29,13 @@ class BuiltinPlugins {
   ///
   /// 这些目录由 CI 在打包时放进 App 的 `builtin-plugins/`，首次启动时整份
   /// 复制进 profile 的 node_modules 并登记到 package.json。
-  static const List<String> bundled = ['dsh-our-free-model', 'dsh-purge'];
+  static const List<String> bundled = [
+    'dsh-our-free-model',
+    'dsh-purge',
+    // 图像与视频：带 scope 的目录名，源码在 runtime/media/dsh-media，
+    // 由 .github/workflows/ios-compile.yml 内置进 Runner.app/builtin-plugins。
+    '@ccch1mneyyy/dsh-media',
+  ];
 
   /// app bundle 里存放内置插件的位置（由 CI 复制进去）。
   static const String bundleFolder = 'builtin-plugins';
