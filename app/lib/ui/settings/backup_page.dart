@@ -12,6 +12,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../shell/page_frame.dart';
 import '../theme/app_icons.dart';
@@ -89,6 +90,40 @@ class _BackupPageState extends State<BackupPage> {
     }
   }
 
+  /// 打开备份所在的文件夹。
+  ///
+  /// 先试 Filza（`filza://`），再退到「文件」App（`shareddocuments://`）。
+  /// 两个都打不开就只说清楚路径，让人自己去拷。
+  Future<void> _openInFilza(BuildContext context) async {
+    final dir = await backupDir();
+    final path = dir.path;
+    // Filza 认的方案是 `Filza://view` 后面直接跟完整的绝对路径
+    // （含前导斜杠），见 Add path to Filza：
+    // https://stackoverflow.com/questions/32022704/add-path-to-filza-logos
+    // 先把空格之类的编码掉，再交给系统去开。
+    final encoded = Uri.encodeFull(path);
+    final candidates = [
+      Uri.parse('filza://view$encoded'),
+      Uri.parse('Filza://view$encoded'),
+      // 没装 Filza：退到「文件」App 的共享文档目录。
+      Uri.parse('shareddocuments://'),
+    ];
+    for (final uri in candidates) {
+      try {
+        if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+      } catch (_) {
+        // 这个 scheme 不认，试下一个。
+      }
+    }
+    if (!context.mounted) return;
+    // 都打不开：至少把路径显出来，能长按复制。
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: SelectableText('备份在：$path'),
+        duration: const Duration(seconds: 8),
+      ),
+    );
+  }
   Future<void> _create() => _run('正在备份…', () async {
     final result = await createBackup(includeCredentials: _withCredentials);
     HapticFeedback.mediumImpact();
@@ -189,6 +224,12 @@ class _BackupPageState extends State<BackupPage> {
               title: '立即备份',
               subtitle: '界面、模型与主机配置、预设、技能、App 偏好',
               onTap: _busy ? null : () => unawaited(_create()),
+            ),
+            SettingsTile(
+              icon: AppIcons.folder,
+              title: '在 Filza 里查看',
+              subtitle: '直接打开备份所在的文件夹',
+              onTap: _busy ? null : () => unawaited(_openInFilza(context)),
             ),
             SettingsTile(
               icon: AppIcons.lock,
