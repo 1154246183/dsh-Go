@@ -68,14 +68,24 @@ class SessionTile extends StatelessWidget {
     final colors = DshColors.of(context);
     final shape = Squircle.border(AppShape.md);
     final highlighted = selecting ? selected : current;
+    // 一行最多一个标记：待确认 > 运行中 > 未读。都是带颜色的小标签，
+    // 不再只用圆点——圆点看久了分不清那几个色到底哪个是哪个。
     final Widget? marker = switch ((pending, running, unread)) {
-      (final PendingKind kind, _, _) => Text(
-        kind.label,
+      (final PendingKind kind, _, _) => _StateChip(
         key: const ValueKey('pending'),
-        style: theme.textTheme.labelMedium?.copyWith(color: colors.warning, fontWeight: FontWeight.w500),
+        label: kind.label,
+        tone: StatusTone.warn,
       ),
-      (_, true, _) => const StatusDot(key: ValueKey('running'), tone: StatusTone.busy, size: dot),
-      (_, _, true) => _UnreadDot(key: const ValueKey('unread'), color: scheme.onSurfaceVariant),
+      (_, true, _) => const _StateChip(
+        key: ValueKey('running'),
+        label: '思考中',
+        tone: StatusTone.busy,
+      ),
+      (_, _, true) => const _StateChip(
+        key: ValueKey('unread'),
+        label: '已完成',
+        tone: StatusTone.ok,
+      ),
       _ => null,
     };
     final label = [
@@ -154,17 +164,42 @@ class SessionTile extends StatelessWidget {
   }
 }
 
-class _UnreadDot extends StatelessWidget {
-  const _UnreadDot({super.key, required this.color});
+/// 会话状态的小标签：一个色点加一行字。颜色只是辅助，字才是信号。
+class _StateChip extends StatelessWidget {
+  const _StateChip({super.key, required this.label, required this.tone});
 
-  final Color color;
+  final String label;
+  final StatusTone tone;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: SessionTile.dot,
-    height: SessionTile.dot,
-    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-  );
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = StatusDot.colorFor(context, tone);
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: color.withValues(alpha: 0.14),
+        shape: StadiumBorder(side: BorderSide(color: color.withValues(alpha: 0.32))),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(6, 2, 8, 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            StatusDot(tone: tone, size: 6),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              maxLines: 1,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// The check that slides in before the title while selecting: a 20 ring,
