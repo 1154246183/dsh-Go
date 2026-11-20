@@ -242,16 +242,3 @@ jobs:
 
       # 只上传 artifact，不再自动发布 Release。
       # 需要直链时手动 gh release create。
-
-      # 只保留最新三个，旧的连 tag 一起删，免得占地方
-      - name: Prune old ipa releases
-        if: success()
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release list --repo "${{ github.repository }}" --limit 100 \
-            --json tagName --jq '.[] | select(.tagName | startswith("ios-")) | .tagName' \
-            | tail -n +4 | while read -r old; do
-                gh release delete "$old" --repo "${{ github.repository }}" --yes --cleanup-tag || true
-              done
