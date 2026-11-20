@@ -240,22 +240,8 @@ jobs:
           compression-level: 0
           retention-days: 3
 
-      # 直链下载：把 ipa 挂到 Release，手机浏览器点一下就能存
-      - name: Publish release asset
-        if: success()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -e
-          tag="ios-$(date -u +%Y%m%d-%H%M%S)"
-          gh release create "$tag" "$RUNNER_TEMP/DSH-Go.ipa" \
-            --repo "${{ github.repository }}" \
-            --title "DSH Go iOS $tag" \
-            --notes "unsigned ipa for TrollStore · 帮助与关于页已加「清理缓存」"
-          url="https://github.com/${{ github.repository }}/releases/download/$tag/DSH-Go.ipa"
-          echo "::notice title=direct-link::$url"
-          echo "### 直接下载" >> "$GITHUB_STEP_SUMMARY"
-          echo "$url" >> "$GITHUB_STEP_SUMMARY"
+      # 只上传 artifact，不再自动发布 Release。
+      # 需要直链时手动 gh release create。
 
       # 只保留最新三个，旧的连 tag 一起删，免得占地方
       - name: Prune old ipa releases
