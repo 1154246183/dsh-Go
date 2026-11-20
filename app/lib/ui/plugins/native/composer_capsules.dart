@@ -25,7 +25,6 @@ import '../../pets/pet_perch.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
 import 'chat_plugins_sheet.dart';
-import 'plugin_capsule_gate.dart';
 import 'native_taps.dart';
 import 'rise_reveal.dart';
 
@@ -274,7 +273,10 @@ class _ComposerCapsuleBarState extends ConsumerState<ComposerCapsuleBar> {
     final session = widget.sessionId;
     final items = [
       ...composerCapsules(context, ref, sessionId: session, quick: quick, plugins: plugins),
-      if (!hidePluginCapsule && session != null && ref.watch(pluginCapsuleHasContentProvider(session)))
+      // 这一颗就是个「打开插件面板」的按钮，不加载任何插件内容：
+      // 面板里的列表和座位规划都是打开之后才算的。
+      // 所以只要在对话里就让它出现，不用先问「有没有插件」。
+      if (!hidePluginCapsule && session != null)
         CapsuleItem(
           id: chatPluginsCapsuleId,
           label: context.l10n.plugslotsChatEntry,
