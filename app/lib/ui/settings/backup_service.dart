@@ -12,7 +12,17 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+/// GitHub 构建的账号存在 App 的 shared_preferences 里（不是 .dsh 下的文件）：
+/// 键名以 `flutter.github_accounts` 开头，值是 JSON 字符串。
+///
+/// 这里不直接读写 plist：Dart 侧由 shared_preferences 负责，备份只带
+/// 键值对这一份快照，还原时再写回去。
+const String githubAccountsPrefix = 'flutter.github_accounts';
+
+/// 备份里放 shared_preferences 那一份的名字。
+const String prefsSectionKey = '_shared_preferences';
 /// 一次备份的结果：写了哪些文件、多大、落在哪儿。
 class BackupResult {
   const BackupResult({required this.file, required this.entries, required this.bytes});
@@ -46,6 +56,22 @@ const List<String> _dirs = <String>[
   '.agent-presets',
   'skills',
   'dsh-app',
+  // 插件自己的设置与账户数据。都在 ~150 KB 以内，值得跟着搬：
+  //   - our-free-model：服务目录缓存、可用性、原生扩展、账户与登录状态
+  //     （settings.json 里存的是已登录的账户信息，正是「免得下次重新输入」）
+  //   - channel-pack：渠道的签到状态与令牌账本（token-ledger.json）
+  //   - media：图像与视频的预算账本和任务恢复索引（含 prompt 与 task id）
+  //   - dsh-purge / redteam / openai-gateway：同一插件族的设置
+  //   - storages：工作区选择、会话投影缓存
+  'our-free-model',
+  'channel-pack',
+  'media',
+  'dsh-purge',
+  'redteam',
+  'openai-gateway',
+  'storages',
+  // 注意：dsh-purge-community（7.7 MB / 448 文件）是插件自己的素材与
+  // 运行缓存，不是「设置」，刻意不收，否则备份文件会胖十倍。
 ];
 
 /// 顶层单文件。
@@ -62,6 +88,18 @@ const List<String> _dirs = <String>[
 ///   运行态，不是你的设置，所以不在备份范围内（还原时也会被跳过，
 ///   见 [restoreBackup]）。
 const List<String> _files = <String>[];
+
+/// 只在勾了「连凭据一起备份」时才收的目录。
+///
+/// 这些目录里除了设置，还留着使用痕迹：media 的账本记着 prompt 与
+/// 供应商 task id，channel-pack 的账本记着令牌用量，our-free-model
+/// 的 settings.json 记着账户。它们本身不含密钥，但和凭据同级敏感，
+/// 放在同一个开关后面，不让人无意间把它发出去。
+const List<String> _credentialGatedDirs = <String>[
+  'our-free-model',
+  'channel-pack',
+  'media',
+];
 
 /// 备份里不该出现的路径前缀：含绝对容器路径的运行态文件。
 ///
@@ -148,6 +186,8 @@ Future<BackupResult> createBackup({bool includeCredentials = false, String? note
   for (final name in _dirs) {
     final dir = Directory('${home.path}/$name');
     if (!dir.existsSync()) continue;
+    // 含使用痕迹的目录跟着凭据开关走。
+    if (!includeCredentials && _credentialGatedDirs.contains(name)) continue;
     for (final entity in dir.listSync(recursive: true, followLinks: false)) {
       if (entity is! File) continue;
       final rel = entity.path.substring('${home.path}/'.length);
@@ -155,6 +195,20 @@ Future<BackupResult> createBackup({bool includeCredentials = false, String? note
       // 没列 attachments；多一层防御，名单将来改了也不会漏）。
       if (rel.startsWith('sessions/') || rel.startsWith('attachments/')) continue;
       collect(rel, entity);
+    }
+  }
+
+  // GitHub 构建的账号：跟着凭据开关走（它等于登录凭证）。
+  if (includeCredentials) {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final key in prefs.getKeys()) {
+        if (!key.startsWith(githubAccountsPrefix)) continue;
+        final value = prefs.get(key);
+        if (value is String) files['${prefsSectionKey}/$key'] = value;
+      }
+    } catch (_) {
+      // 读不到就不带，不影响别的设置。
     }
   }
 
@@ -238,6 +292,22 @@ Future<RestoreResult> restoreBackup(
     }
     if (rel == '.credentials.yaml' && !includeCredentials) {
       skipped++;
+      continue;
+    }
+    // GitHub 账号：写回 shared_preferences，不是文件。
+    if (rel.startsWith('${prefsSectionKey}/')) {
+      if (!includeCredentials) {
+        skipped++;
+        continue;
+      }
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(rel.substring(prefsSectionKey.length + 1), entry.value);
+        written++;
+      } catch (_) {
+        skipped++;
+      }
+      onProgress?.call(rel, i + 1, entries.length);
       continue;
     }
     if (rel.startsWith('sessions/') || rel.startsWith('attachments/')) {
