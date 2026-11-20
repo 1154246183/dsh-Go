@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../l10n/l10n.dart';
 import '../../../state/drawer_view_state.dart';
 import '../../../state/session_attention_state.dart';
+import '../../../state/session_run_state.dart';
 import '../../../state/session_created_state.dart';
 import '../../../state/sessions_state.dart';
 import '../../../state/workspaces_state.dart';
@@ -62,6 +63,7 @@ class DrawerConversationList extends ConsumerWidget {
     final current = ref.watch(currentSessionProvider);
     final pending = ref.watch(pendingInteractionsProvider);
     final unread = ref.watch(unreadSessionIdsProvider);
+    final runs = ref.watch(sessionRunStateProvider);
     final pinned = ref.watch(workspacesProvider.select((s) => s.pinnedSessionIds)).toSet();
     final sort = ref.watch(drawerViewProvider.select((v) => v.sort));
     if (!readOnly && sort == DrawerSort.created) {
@@ -83,6 +85,14 @@ class DrawerConversationList extends ConsumerWidget {
         running: s.running,
         current: id == current,
         pending: readOnly ? null : pending[id],
+        mark: readOnly
+            ? null
+            : sessionMarkOf(
+                runs,
+                pending,
+                id,
+                unreadHint: unread.contains(id),
+              ),
         unread: !readOnly && unread.contains(id),
         pinned: inFolder && pinned.contains(id),
         indent: inFolder ? SessionTile.folderIndent : 0,
