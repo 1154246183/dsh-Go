@@ -154,6 +154,103 @@ final chatSheetPagesProvider = Provider.autoDispose.family<List<SeatItem>, Strin
 Future<void> showChatPluginsSheet(BuildContext context, {required String sessionId}) =>
     showAppSheet<void>(context, isScrollControlled: true, builder: (_) => ChatPluginsSheet(sessionId: sessionId));
 
+/// 第二层：一个插件自己的面板与设置。第一层只列插件名，点名字才到这里。
+Future<void> showPluginPanelSheet(
+  BuildContext context, {
+  required String sessionId,
+  required String package,
+  required String title,
+}) =>
+    showAppSheet<void>(
+      context,
+      isScrollControlled: true,
+      builder: (_) => PluginPanelSheet(sessionId: sessionId, package: package, title: title),
+    );
+
+/// One plugin's own parts: its native chat panels, then its ways in.
+class PluginPanelSheet extends ConsumerWidget {
+  const PluginPanelSheet({
+    super.key,
+    required this.sessionId,
+    required this.package,
+    required this.title,
+  });
+
+  final String sessionId;
+  final String package;
+  final String title;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    final panels = [
+      for (final p in ref.watch(chatNativePanelsProvider))
+        if (p.package == package) p,
+    ];
+    final web = ref.watch(chatWebPluginsProvider(sessionId));
+    // island 是整个聊天页共用的那一块，它不只属于这个插件：
+    // 这里给它 null，落回下面按插件过滤出来的行。
+    final mine = ChatWebPlugins(
+      seat: web.seat,
+      items: [
+        for (final item in web.items)
+          if (item.occupant.package == package) item,
+      ],
+    );
+    final bundles = ref.watch(installedPluginsProvider.select((s) => s.value));
+    final bundle = seatBundleOf(bundles, package);
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: ChatPluginsMetrics.initial,
+      minChildSize: ChatPluginsMetrics.initial,
+      maxChildSize: ChatPluginsMetrics.full,
+      snap: true,
+      builder: (context, controller) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SheetHeader(title),
+          Expanded(
+            child: ListView(
+              key: ValueKey('chat-plugin-panel|$package'),
+              controller: controller,
+              padding: EdgeInsets.fromLTRB(ChatPluginsMetrics.side, 4, ChatPluginsMetrics.side, bottom + 24),
+              children: [
+                for (final (i, panel) in panels.indexed) ...[
+                  if (i > 0) const SizedBox(height: ChatPluginsMetrics.gap),
+                  KeyedSubtree(
+                    key: ValueKey('chat-plugins-native|${panel.package}|${panel.id}'),
+                    child: NativePanelView(panel: panel, sessionId: sessionId),
+                  ),
+                ],
+                if (!mine.isEmpty) ...[
+                  if (panels.isNotEmpty) const SizedBox(height: ChatPluginsMetrics.gap + 4),
+                  _WebPlugins(web: mine, sessionId: sessionId),
+                ],
+                if (bundle != null) ...[
+                  const SizedBox(height: ChatPluginsMetrics.gap),
+                  ListPageCard(
+                    margin: EdgeInsets.zero,
+                    children: [
+                      ListPageRow(
+                        key: ValueKey('chat-plugin-settings|$package'),
+                        icon: AppIcons.settings,
+                        title: l10n.commonSettings,
+                        chevron: true,
+                        onTap: () => unawaited(showBundleSheet(context, bundle)),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ChatPluginsSheet extends ConsumerWidget {
   const ChatPluginsSheet({super.key, required this.sessionId});
 
@@ -172,6 +269,28 @@ class ChatPluginsSheet extends ConsumerWidget {
         if (context.mounted) unawaited(Navigator.of(context).maybePop());
       });
     }
+    // 第一层只列插件名；点名字才进它自己的面板与设置。
+    final bundles = ref.watch(installedPluginsProvider.select((s) => s.value));
+    final entries = <({String package, String title})>[];
+    final seen = <String>{};
+    for (final panel in native) {
+      if (seen.add(panel.package)) {
+        final title = ref.watch(nativePluginTitleProvider(panel.package));
+        entries.add((
+          package: panel.package,
+          title: title.isEmpty ? panel.package : title,
+        ));
+      }
+    }
+    for (final package in web.packages) {
+      if (seen.add(package)) {
+        entries.add((
+          package: package,
+          title: seatBundleOf(bundles, package)?.title() ?? package,
+        ));
+      }
+    }
+    entries.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: ChatPluginsMetrics.initial,
@@ -188,17 +307,27 @@ class ChatPluginsSheet extends ConsumerWidget {
               controller: controller,
               padding: EdgeInsets.fromLTRB(ChatPluginsMetrics.side, 4, ChatPluginsMetrics.side, bottom + 24),
               children: [
-                for (final (i, panel) in native.indexed) ...[
-                  if (i > 0) const SizedBox(height: ChatPluginsMetrics.gap),
-                  KeyedSubtree(
-                    key: ValueKey('chat-plugins-native|${panel.package}|${panel.id}'),
-                    child: NativePanelView(panel: panel, sessionId: sessionId),
-                  ),
-                ],
-                if (!web.isEmpty) ...[
-                  if (native.isNotEmpty) const SizedBox(height: ChatPluginsMetrics.gap + 4),
-                  _WebPlugins(web: web, sessionId: sessionId),
-                ],
+                ListPageCard(
+                  margin: EdgeInsets.zero,
+                  children: [
+                    for (final entry in entries)
+                      ListPageRow(
+                        key: ValueKey('chat-plugins-entry|${entry.package}'),
+                        icon: AppIcons.plugin,
+                        title: entry.title,
+                        subtitle: entry.package == entry.title ? null : entry.package,
+                        chevron: true,
+                        onTap: () => unawaited(
+                          showPluginPanelSheet(
+                            context,
+                            sessionId: sessionId,
+                            package: entry.package,
+                            title: entry.title,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
