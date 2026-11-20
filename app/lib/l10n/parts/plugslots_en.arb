@@ -228,5 +228,6 @@
   "plugslotsPlaceElsewhere": "Elsewhere",
   "plugslotsPlaceUnknown": "Its web interface",
   "plugslotsChatEntry": "Plugins",
-  "plugslotsChatWebFrom": "Web plugins · {names}"
+  "plugslotsChatWebFrom": "Web plugins · {names}",
+  "plugslotsChatNoPanel": "This plugin has no chat surface; open its settings to configure it."
 }
