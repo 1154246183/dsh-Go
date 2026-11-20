@@ -235,5 +235,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "plugslotsChatNoPanel": "这个插件没有聊天界面，打开设置配置它。"
 }
