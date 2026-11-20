@@ -97,11 +97,14 @@ class _BackupPageState extends State<BackupPage> {
   Future<void> _openInFilza(BuildContext context) async {
     final dir = await backupDir();
     final path = dir.path;
-    // Filza 认的方案是 `Filza://view` 后面直接跟完整的绝对路径
-    // （含前导斜杠），见 Add path to Filza：
-    // https://stackoverflow.com/questions/32022704/add-path-to-filza-logos
-    // 先把空格之类的编码掉，再交给系统去开。
-    final encoded = Uri.encodeFull(path);
+    // Filza 的 `filza://view` 是「看这个文件」，不是「进这个文件夹」：
+    // 给它一个目录只会停在父级。所以优先指向最新的备份文件 —— Filza
+    // 会落到 backups 里并选中它，也就等于进了这个目录。
+    // （scheme 见 Filza 二进制里的 filza://view，参考资料：
+    //  https://stackoverflow.com/questions/32022704/add-path-to-filza-logos）
+    final backups = await listBackups();
+    final target = backups.isEmpty ? path : backups.first.path;
+    final encoded = Uri.encodeFull(target);
     final candidates = [
       Uri.parse('filza://view$encoded'),
       Uri.parse('Filza://view$encoded'),
