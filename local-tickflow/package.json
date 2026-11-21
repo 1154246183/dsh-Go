@@ -1,0 +1,45 @@
+{
+  "name": "local-tickflow",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "description": "TickFlow 行情：自选股实时行情 + 日K本地库 + 炒股设置页",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
+  },
+  "dshGo": {
+    "v": 1,
+    "title": { "zh": "炒股", "en": "Stocks" },
+    "icon": "chart",
+    "wants": ["clipboard"],
+    "contributes": {
+      "composer.tools": [
+        { "id": "openWatch", "label": { "zh": "自选行情", "en": "Watch" }, "icon": "chart", "panel": "watchlist" },
+        { "id": "openSettings", "label": { "zh": "炒股设置", "en": "Stock" }, "icon": "settings", "panel": "settings" }
+      ],
+      "composer.strip": [
+        { "id": "tick", "icon": "chart", "panel": "watchlist" }
+      ],
+      "panels": [
+        {
+          "id": "settings",
+          "title": { "zh": "炒股设置", "en": "Stock settings" },
+          "icon": "settings",
+          "placement": ["plugin", "features", "chat.panel", "session.tab"]
+        },
+        {
+          "id": "watchlist",
+          "title": { "zh": "自选股", "en": "Watchlist" },
+          "icon": "chart",
+          "placement": ["plugin", "features", "chat.panel", "session.tab"]
+        }
+      ]
+    }
+  }
+}
