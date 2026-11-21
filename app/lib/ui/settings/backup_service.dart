@@ -449,7 +449,11 @@ Future<RestoreResult> restoreBackup(
         for (final suffix in _walSuffixes) {
           final side = File('${target.path}$suffix');
           if (side.existsSync()) {
-            try { side.deleteSync() } catch (_) {}
+            try {
+              side.deleteSync();
+            } catch (_) {
+              // 删不掉就算了，拷贝会覆盖。
+            }
           }
         }
         source.copySync(target.path);
