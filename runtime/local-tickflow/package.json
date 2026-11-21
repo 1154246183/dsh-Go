@@ -19,10 +19,6 @@
     "icon": "chart",
     "wants": ["clipboard"],
     "contributes": {
-      "composer.tools": [
-        { "id": "openWatch", "label": { "zh": "自选行情", "en": "Watch" }, "icon": "chart", "panel": "watchlist" },
-        { "id": "openSettings", "label": { "zh": "炒股设置", "en": "Stock" }, "icon": "settings", "panel": "settings" }
-      ],
       "composer.strip": [
         { "id": "tick", "icon": "chart", "panel": "watchlist" }
       ],
