@@ -18,6 +18,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
 import 'local_paths.dart';
@@ -156,9 +157,15 @@ class BuiltinPlugins {
         final source = Directory('${sourceRoot.path}/$plugin');
         if (!source.existsSync()) continue;
         final target = Directory('${modules.path}/$plugin');
+        // 比内容，不比「目录在不在」：装上新 IPA 后包里的插件已经换版，
+        // 只看目录存不存在会永远留着 profile 里第一次装进去的那份，改了什么
+        // 都不生效。只覆盖代码文件，config.json / data/ 这些运行时产生的
+        // 东西不动，否则用户的自选和 Key 会被每次启动清掉。
         if (!target.existsSync()) {
           steps.add('复制 $plugin → $name');
           await _copy(source, target);
+        } else if (await _refresh(source, target, steps, name, plugin)) {
+          // 已按包内新版覆盖。
         } else {
           steps.add('$plugin 已在 $name');
         }
@@ -188,6 +195,66 @@ class BuiltinPlugins {
         entity.copySync(destination);
       }
     }
+  }
+
+  /// 用包里的新版覆盖 profile 里已存在的那份，只动代码文件。
+  ///
+  /// 运行时会写进插件目录的东西必须留着：`config.json`（炒股开关、自选）、
+  /// `data/`（行情库）、`.apikey`。指纹记在目标目录的 `.builtin-source`，
+  /// 与包内源一致就整份跳过，换版则一次全部覆盖。
+  ///
+  /// 返回 true 表示确实覆盖了。
+  static Future<bool> _refresh(
+    Directory source,
+    Directory target,
+    List<String> steps,
+    String profile,
+    String plugin,
+  ) async {
+    // 先比整份清单的指纹（路径+长度+内容哈希）：一样就什么都不做。
+    // 只比长度会漏掉等长改动，比 mtime 又永远不等（copySync 会刷新它）。
+    final stampFile = File('${target.path}/.builtin-source');
+    final stamp = _fingerprint(source);
+    if (stampFile.existsSync()) {
+      try {
+        if (stampFile.readAsStringSync().trim() == stamp) return false;
+      } catch (_) {
+        // 读不了就当没有，走覆盖。
+      }
+    }
+    for (final entity in source.listSync(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      final relative = entity.path.substring(source.path.length + 1);
+      if (_runtimeOwned(relative)) continue;
+      final destination = File('${target.path}/$relative');
+      destination.parent.createSync(recursive: true);
+      entity.copySync(destination.path);
+    }
+    try {
+      stampFile.writeAsStringSync('$stamp\n', flush: true);
+    } catch (_) {}
+    steps.add('更新 $plugin → $profile');
+    return true;
+  }
+
+  /// 插件源目录的指纹：每个文件的大小与内容摘要合起来再摘要一次。
+  static String _fingerprint(Directory source) {
+    final parts = <String>[];
+    for (final entity in source.listSync(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      final relative = entity.path.substring(source.path.length + 1);
+      if (_runtimeOwned(relative)) continue;
+      final bytes = entity.readAsBytesSync();
+      parts.add('$relative:${bytes.length}:${sha256.convert(bytes)}');
+    }
+    parts.sort();
+    return sha256.convert(utf8.encode(parts.join('\n'))).toString();
+  }
+
+  /// 插件自己运行时生成的文件，覆盖时一律不动。
+  static bool _runtimeOwned(String relative) {
+    final name = relative.split('/').first;
+    return name == 'data' || name == 'config.json' || name == '.apikey';
   }
 
   /// 在 profile 的 package.json 里登记 bundle。解析失败就原样不动。
