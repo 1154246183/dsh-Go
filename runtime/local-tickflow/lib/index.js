@@ -111,13 +111,18 @@ export function apply(ctx) {
       const zh = zhOf(caps && caps.locale)
       // 总开关：关着就连定时器都不建，也不开库、不查表。
       // 「不用的时候不加载行情」就靠这一道。
+      //
+      // 关着时 emit 空文本 —— App 那边（composer_strip.dart:264）只看
+      // text.isNotEmpty 才把这一行放进 ready，空文本整条不显示。
+      // 不能写「炒股已关闭」：那会占着输入框上方一行，白占地方。
       const enabled = () => config().enabled !== false
+      const HIDDEN = { text: '' }
       if (!enabled()) {
-        emit({ text: zh ? '炒股已关闭' : 'Stocks off', icon: 'chart' })
+        emit(HIDDEN)
         return () => {}
       }
       const paint = () => {
-        if (!enabled()) return emit({ text: zh ? '炒股已关闭' : 'Stocks off', icon: 'chart' })
+        if (!enabled()) return emit(HIDDEN)
         try {
           const db = open()
           ensureWatchlist(db)
