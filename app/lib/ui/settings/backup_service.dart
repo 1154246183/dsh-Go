@@ -45,6 +45,9 @@ class RestoreResult {
 /// 备份文件的格式版本。以后加字段靠它认旧文件。
 const int backupVersion = 1;
 
+/// SQLite 的旁路文件后缀：还原写回前要先删掉，否则旧日志会盖掉新库。
+const List<String> _walSuffixes = <String>['-wal', '-shm'];
+
 /// 整棵备份的目录（相对 `.dsh`）。
 ///
 /// 只收「配置」，不收「内容」：
@@ -443,7 +446,7 @@ Future<RestoreResult> restoreBackup(
         final target = File('${home.path}/$rel');
         target.parent.createSync(recursive: true);
         // 旧的 WAL / SHM 会让新库读到过期的页，先清掉。
-        for (final suffix in const ['-wal', '-shm']) {
+        for (final suffix in _walSuffixes) {
           final side = File('${target.path}$suffix');
           if (side.existsSync()) {
             try { side.deleteSync() } catch (_) {}
