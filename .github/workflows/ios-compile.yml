@@ -287,6 +287,9 @@ jobs:
               dsh = pkg.get("dshGo") or {"v": 1}
               dsh["title"] = {"zh": zh, "en": en}
               dsh.setdefault("icon", icon)
+              # contributes 必须是对象：引擎侧 parseManifest 缺这个字段会标
+              # valid:false，插件进不了贡献列表，插件面板里就没有它的入口。
+              dsh.setdefault("contributes", {})
               pkg["dshGo"] = dsh
               f.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
               print(f"{rel}: {zh}")
@@ -295,7 +298,11 @@ jobs:
               f = root / rel / "package.json"
               if not f.is_file():
                   continue
-              got = json.loads(f.read_text(encoding="utf-8")).get("dshGo", {}).get("title", {}).get("zh")
+              rd = json.loads(f.read_text(encoding="utf-8")).get("dshGo", {})
+              got = rd.get("title", {}).get("zh")
+              if not isinstance(rd.get("contributes"), dict):
+                  print(f"::error title=plugin:: {rel} 缺 contributes，面板里会没有入口")
+                  rc = 1
               if got != zh:
                   print(f"::error title=plugin:: {rel} 的 title 没写成（{got!r}）")
                   rc = 1
