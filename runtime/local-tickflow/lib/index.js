@@ -106,9 +106,9 @@ const can = (caps, comp) => {
 
 export function apply(ctx) {
   ctx.inject(['dshGo'], (ctx) => {
-    // ═════════ 加号工具：直达面板 ═════════
-    ctx.dshGo.on('openSettings', () => ({ open: 'panel:settings' }))
-    ctx.dshGo.on('openWatch', () => ({ open: 'panel:watchlist' }))
+    // ═════════ 加号工具：已移除 ═════════
+    // 「自选行情」「炒股设置」两个入口不再出现在 ＋ 面板里；面板改为从
+    // 设置 › 插件 进入。handler 一并删掉：留着是没有入口的死绑定。
 
     // ═════════ 状态条 ═════════
     ctx.dshGo.strip('tick', (scope, emit, caps) => {
