@@ -15,6 +15,10 @@ export const name = 'local-tickflow'
 // ── 进度与状态 ──
 const prog = { running: false, task: '', detail: '', done: 0, total: 0, lastError: '', lastOk: '' }
 let selSymbol = ''
+// 当前这次行情条订阅的 emit，关掉炒股时用它立刻清空那一行。
+// 订阅结束置 null，避免对已关闭的 feed 说话。
+let tickEmit = null
+const HIDDEN_STRIP = { text: '' }
 
 const zhOf = (loc) => !String(loc || '').startsWith('en')
 
@@ -116,10 +120,11 @@ export function apply(ctx) {
       // text.isNotEmpty 才把这一行放进 ready，空文本整条不显示。
       // 不能写「炒股已关闭」：那会占着输入框上方一行，白占地方。
       const enabled = () => config().enabled !== false
-      const HIDDEN = { text: '' }
+      const HIDDEN = HIDDEN_STRIP
+      tickEmit = emit
       if (!enabled()) {
         emit(HIDDEN)
-        return () => {}
+        return () => { tickEmit = null }
       }
       const paint = () => {
         if (!enabled()) return emit(HIDDEN)
@@ -148,11 +153,15 @@ export function apply(ctx) {
         }
       }
       paint()
+      // 关闭炒股的那一刻 App 不会重新订阅，只有这次 emit 能把「自选为空，
+      // 点开设置」这类残留清掉：定时器一律走 paint()，由它自己判断开关，
+      // 不能用 enabled() 挡在 setInterval 外面——那样关了以后再也不 emit，
+      // 行情条就定在最后一条非空文本上。
       const timer = setInterval(
-        () => { if (enabled() && inSession()) paint() },
+        () => { if (inSession()) paint() },
         Math.max(30, Number(config().refreshSec) || 60) * 1000,
       )
-      return () => clearInterval(timer)
+      return () => { tickEmit = null; clearInterval(timer) }
     })
 
     // ═════════ 面板：炒股设置 ═════════
@@ -298,6 +307,8 @@ export function apply(ctx) {
           const cf = config()
           cf.enabled = on
           saveConfig(cf)
+          // 关掉就立刻把行情条收掉，不等下一次定时刷新；重开由 refresh 重画。
+          if (!on) try { tickEmit?.(HIDDEN_STRIP) } catch {}
           return { toast: on ? '炒股已启用' : '炒股已关闭', refresh: true }
         },
         toggleEnabled: () => {
@@ -305,6 +316,7 @@ export function apply(ctx) {
           const on = !(cf.enabled !== false)
           cf.enabled = on
           saveConfig(cf)
+          if (!on) try { tickEmit?.(HIDDEN_STRIP) } catch {}
           return { toast: on ? '炒股已启用，行情恢复' : '炒股已关闭，行情停止', refresh: true }
         },
         saveWatch: (scope, event) => {
