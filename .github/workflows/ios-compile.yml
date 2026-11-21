@@ -175,7 +175,7 @@ jobs:
           # assembled.variables 里有没有 cwd，没有就退回静态文本。
           # 依赖只有 peer 的 @deepseek-ai/cordis（由宿主提供），整份复制即可。
           app="app/build/ios/iphoneos/Runner.app"
-          dest="$app/builtin-plugins/dsh-purge"
+          dest="$app/builtin-plugins/dsh-purge-community"
           mkdir -p "$dest"
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/purge.tar.gz" \
             https://codeload.github.com/kingcharleslzy-ai/dsh-purge/tar.gz/refs/heads/master
@@ -217,6 +217,7 @@ jobs:
           mkdir -p "$dest"
           cp -R "$src/src" "$dest/src"
           cp -R "$src/data" "$dest/data"
+          [ -d "$src/locale" ] && cp -R "$src/locale" "$dest/locale" || true
           rm -rf "$dest/src/test" "$dest/test"
           for item in package.json cordis.patch.yml README.md LICENSE; do
             [ -e "$src/$item" ] && cp "$src/$item" "$dest/" || true
