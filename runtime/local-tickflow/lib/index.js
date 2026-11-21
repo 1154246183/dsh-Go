@@ -540,17 +540,51 @@ export function apply(ctx) {
 }
 
 // 表单字段可能落在不同层级，统一捞。
+//
+// 表单提交（v2 的 form）不是把值平铺进 event，而是整包放在
+// `event.values` 里，键是 binding 全路径（`data.symbolsInput`），
+// 见 dsh_ui_plugin_controls_state.dart 的 submit()：
+//   args = {...submit.args, values: {'data.symbolsInput': '002141'}}
+// 所以既要往下钻几层容器，也要认「以 .key 结尾」的键名。
+const INPUT_CONTAINERS = ['value', 'args', 'data', 'form', 'payload', 'values', 'inputs', 'fields']
+
 function readInput(event, keys) {
   if (!event) return null
-  const pools = [event.value, event.args, event.data, event.form, event.payload]
-  for (const p of pools) {
-    if (p == null) continue
-    if (typeof p === 'string' && keys.length === 1) return p
-    if (typeof p === 'object') {
-      for (const k of keys) if (p[k] != null) return p[k]
-      const vals = Object.values(p).filter((x) => typeof x === 'string')
-      if (vals.length === 1) return vals[0]
+  const found = pickInput(event, keys, 0)
+  if (found !== undefined) return found
+  return typeof event.value === 'string' ? event.value : null
+}
+
+// 深度优先：先按精确键名，再按 `xxx.key` 后缀，最后才是独值兜底。
+function pickInput(node, keys, depth) {
+  if (node == null || depth > 6) return undefined
+  if (typeof node === 'string') return null
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const r = pickInput(item, keys, depth + 1)
+      if (r !== undefined) return r
+    }
+    return undefined
+  }
+  if (typeof node !== 'object') return undefined
+
+  // 1) 精确键名
+  for (const k of keys) if (node[k] != null) return node[k]
+  // 2) binding 全路径：data.symbolsInput / composer.x.symbolsInput
+  for (const k of keys) {
+    for (const [name, v] of Object.entries(node)) {
+      if (v != null && (name === k || name.endsWith(`.${k}`))) return v
     }
   }
-  return typeof event.value === 'string' ? event.value : null
+  // 3) 往下钻已知容器
+  for (const c of INPUT_CONTAINERS) {
+    if (node[c] != null) {
+      const r = pickInput(node[c], keys, depth + 1)
+      if (r !== undefined && r !== null) return r
+    }
+  }
+  // 4) 兜底：这一层只有一个字符串值，就是它
+  const strings = Object.values(node).filter((x) => typeof x === 'string')
+  if (strings.length === 1) return strings[0]
+  return undefined
 }
