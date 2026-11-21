@@ -265,7 +265,15 @@ class _ComposerStripSlotState extends ConsumerState<ComposerStripSlot> with Widg
     }
     _schedule(ready.length);
     final shown = ready.isEmpty ? null : ready[_index % ready.length];
-    if (shown != null) _last = shown;
+    // A plugin that stops speaking (炒股 switched off emits empty text) must
+    // take its line away at once: keeping `_last` there left 「自选为空，
+    // 点开设置」 standing above the composer for good. `_last` is only for
+    // riding out the sink while a reply generates — that is, `visible` false.
+    if (shown != null) {
+      _last = shown;
+    } else if (widget.visible) {
+      _last = null;
+    }
     final last = _last;
     Widget? strip;
     if (last != null) {
