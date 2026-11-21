@@ -238,6 +238,31 @@ jobs:
           echo "dsh-media size: $(du -sh "$dest" | cut -f1)"
           ls -la "$dest"
 
+      - name: Bundle local-tickflow (stocks)
+        run: |
+          # 炒股：源码在 runtime/local-tickflow。只带代码与 sql 建表脚本，
+          # data/tickflow.db 是运行时生成的行情库，不进包。
+          app="app/build/ios/iphoneos/Runner.app"
+          dest="$app/builtin-plugins/local-tickflow"
+          src="runtime/local-tickflow"
+          test -f "$src/package.json" || {
+            echo '::error title=plugin::runtime/local-tickflow 不在仓库里'; exit 1; }
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          cp -R "$src/lib" "$dest/lib"
+          cp -R "$src/sql" "$dest/sql"
+          for item in package.json cordis.patch.yml README.md; do
+            [ -e "$src/$item" ] && cp "$src/$item" "$dest/" || true
+          done
+          # 干净的首启状态：建表脚本在，库由插件自己 mkdir + DatabaseSync 出来。
+          rm -rf "$dest/data"
+          test -f "$dest/lib/index.js" || {
+            echo '::error title=plugin::local-tickflow 的 lib/index.js 没落进包里'; exit 1; }
+          test -f "$dest/sql/schema.sql" || {
+            echo '::error title=plugin::local-tickflow 缺 sql/schema.sql，首次运行建不出表'; exit 1; }
+          echo "local-tickflow size: $(du -sh "$dest" | cut -f1)"
+          ls -la "$dest"
+
       - name: Give the built-in plugins Chinese names
         run: |
           # 插件面板显示的是 plugin package.json 里 dshGo.title 的中文名；
