@@ -238,6 +238,44 @@ jobs:
           echo "dsh-media size: $(du -sh "$dest" | cut -f1)"
           ls -la "$dest"
 
+      - name: Give the built-in plugins Chinese names
+        run: |
+          # 插件面板显示的是 plugin package.json 里 dshGo.title 的中文名；
+          # 没声明的（破甲、免费模型）会退回包名，看起来是一串英文包号。
+          # 这里在打包前统一写上。用 python 改 JSON，避免 sed 在含 & 的
+          # 字符串上出错。
+          python3 - "$PWD/app/build/ios/iphoneos/Runner.app/builtin-plugins" <<"PY"
+          import json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          wanted = {
+              "dsh-purge": ("破甲", "Purge", "shield"),
+              "dsh-our-free-model": ("免费模型", "Free Models", "sparkles"),
+              "@ccch1mneyyy/dsh-media": ("图像与视频", "Images and Video", "image"),
+          }
+          rc = 0
+          for rel, (zh, en, icon) in wanted.items():
+              f = root / rel / "package.json"
+              if not f.is_file():
+                  print(f"note: {rel} 不在包里，跳过")
+                  continue
+              pkg = json.loads(f.read_text(encoding="utf-8"))
+              dsh = pkg.get("dshGo") or {"v": 1}
+              dsh["title"] = {"zh": zh, "en": en}
+              dsh.setdefault("icon", icon)
+              pkg["dshGo"] = dsh
+              f.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+              print(f"{rel}: {zh}")
+          # 三个只要有一个在包里就必须写成中文名
+          for rel, (zh, _, _) in wanted.items():
+              f = root / rel / "package.json"
+              if not f.is_file():
+                  continue
+              got = json.loads(f.read_text(encoding="utf-8")).get("dshGo", {}).get("title", {}).get("zh")
+              if got != zh:
+                  print(f"::error title=plugin:: {rel} 的 title 没写成（{got!r}）")
+                  rc = 1
+          sys.exit(rc)
+          PY
       - name: Sign with the HID entitlement
         run: |
           brew install ldid || true
