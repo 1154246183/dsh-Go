@@ -70,6 +70,8 @@
   "dshGo": {
     "v": 1,
     "minApp": "1.0.2",
+    "title": { "zh": "图像与视频", "en": "Images and Video" },
+    "icon": "image",
     "contributes": {}
   }
 }
