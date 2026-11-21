@@ -115,6 +115,18 @@ const List<String> _containerBound = <String>[
 /// [rel] 是不是那种「绑死在这次安装上」的运行态文件。
 bool _isContainerBound(String rel) => _containerBound.any((p) => rel == p || rel.startsWith(p));
 
+/// 需要整份拷贝、不进 JSON 的二进制文件。
+///
+/// SQLite 行情库（炒股插件的 data/tickflow.db）是二进制，按 UTF-8 读会得到
+/// 一堆乱码，base64 进 JSON 又让备份膨胀一倍还得编解码。直接复制文件最省事：
+/// 备份时放到 `<备份名>.files/` 下，还原时拷回原位。
+bool _isBinaryPath(String rel) {
+  if (rel.endsWith('.db') || rel.endsWith('.sqlite') || rel.endsWith('.sqlite3')) return true;
+  if (rel.endsWith('.png') || rel.endsWith('.jpg') || rel.endsWith('.webp')) return true;
+  if (rel.endsWith('.zip') || rel.endsWith('.gz')) return true;
+  return false;
+}
+
 /// `.dsh` 根目录。和「帮助与关于」里用的是同一个位置。
 Future<Directory?> dshDataDir() async {
   try {
@@ -168,15 +180,29 @@ Future<BackupResult> createBackup({bool includeCredentials = false, String? note
     throw StateError('没找到 DSH 数据目录');
   }
   final files = <String, String>{};
+  // 需要原样拷贝的二进制文件（SQLite 行情库之类）：它们的相对路径。
+  // 不进 JSON —— 1 MB 的库 base64 之后更大，还得编解码。
+  // 备份时把它们复制到备份文件旁边的同名目录，还原时再拷回来。
+  final copies = <String>[];
 
   void collect(String rel, File file) {
     // 绑死在这台设备这次安装上的运行态文件，一律不收：重装后 UUID 变了，
     // 放回去只会指向不存在的路径。
     if (_isContainerBound(rel)) return;
+    // WAL / SHM 是 SQLite 的临时旁路文件，跟着主库一起搬没意义，
+    // 还原时留着旧的反而会污染刚写回去的主库。
+    if (rel.endsWith('-wal') || rel.endsWith('-shm')) return;
+    if (_isBinaryPath(rel)) {
+      copies.add(rel);
+      return;
+    }
     try {
-      // 配置都是文本；按 UTF-8 收，坏了就跳过（宁可少一个文件，也不要生成打不开的备份）。
+      // 其余按 UTF-8 收；坏了就跳过（宁可少一个文件，也不要生成打不开的备份）。
       files[rel] = file.readAsStringSync();
-    } catch (_) {}
+    } catch (_) {
+      // 不是 UTF-8 就是二进制，改成整份拷贝。
+      copies.add(rel);
+    }
   }
 
   if (includeCredentials) {
@@ -195,6 +221,41 @@ Future<BackupResult> createBackup({bool includeCredentials = false, String? note
       // 没列 attachments；多一层防御，名单将来改了也不会漏）。
       if (rel.startsWith('sessions/') || rel.startsWith('attachments/')) continue;
       collect(rel, entity);
+    }
+  }
+
+  // 插件自带的本地数据库：`profiles/<profile>/node_modules/<pkg>/data/*.db`。
+  // 炒股插件的 tickflow.db 就是这种 —— 1 MB 上下的 SQLite，里面是已同步的
+  // K 线与自选股。不收的话重装后要重新拉一遍。
+  // 只收 db，不收插件的其它文件（那是代码，随 ipa 一起装）。
+  final profilesRoot = Directory('${home.path}/profiles');
+  if (profilesRoot.existsSync()) {
+    for (final profile in profilesRoot.listSync(followLinks: false)) {
+      if (profile is! Directory) continue;
+      final modules = Directory('${profile.path}/node_modules');
+      if (!modules.existsSync()) continue;
+      for (final pkg in modules.listSync(followLinks: false)) {
+        if (pkg is! Directory) continue;
+        // 带 scope 的包（@scope/name）
+        final leaves = <Directory>[];
+        if (pkg.path.split('/').last.startsWith('@')) {
+          for (final inner in pkg.listSync(followLinks: false)) {
+            if (inner is Directory) leaves.add(inner);
+          }
+        } else {
+          leaves.add(pkg);
+        }
+        for (final leaf in leaves) {
+          final data = Directory('${leaf.path}/data');
+          if (!data.existsSync()) continue;
+          for (final entity in data.listSync(followLinks: false)) {
+            if (entity is! File) continue;
+            final rel = entity.path.substring('${home.path}/'.length);
+            if (rel.startsWith('sessions/') || rel.startsWith('attachments/')) continue;
+            collect(rel, entity);
+          }
+        }
+      }
     }
   }
 
@@ -220,18 +281,40 @@ Future<BackupResult> createBackup({bool includeCredentials = false, String? note
     'note': note ?? '',
     'includesCredentials': includeCredentials,
     'files': files,
+    // 二进制文件的相对路径；实际内容放在备份旁边的同名目录里。
+    if (copies.isNotEmpty) 'copies': copies,
   };
   final text = const JsonEncoder.withIndent('  ').convert(payload);
   final dir = await backupDir();
   final file = File('${dir.path}/dsh-backup-${_stamp(now)}.json');
   await file.writeAsString(text);
-  return BackupResult(file: file, entries: files.length, bytes: text.length);
+
+  // 二进制原样拷贝到 <备份名>.files/ 下，保持原来的相对路径。
+  if (copies.isNotEmpty) {
+    final sidecar = Directory('${dir.path}/${file.uri.pathSegments.last}.files');
+    if (sidecar.existsSync()) sidecar.deleteSync(recursive: true);
+    for (final rel in copies) {
+      try {
+        final source = File('${home.path}/$rel');
+        if (!source.existsSync()) continue;
+        final target = File('${sidecar.path}/$rel');
+        target.parent.createSync(recursive: true);
+        source.copySync(target.path);
+      } catch (_) {}
+    }
+  }
+
+  return BackupResult(
+    file: file,
+    entries: files.length + copies.length,
+    bytes: text.length,
+  );
 }
 
 /// 读一个备份文件，校验格式，给出里面的文件表。
 ///
 /// 认不出来就抛 [FormatException]，调用方负责提示。
-Future<({Map<String, String> files, String? note, bool credentials, DateTime? at})> readBackup(File file) async {
+Future<({Map<String, String> files, List<String> copies, String? note, bool credentials, DateTime? at})> readBackup(File file) async {
   final text = await file.readAsString();
   final Object? decoded;
   try {
@@ -258,8 +341,14 @@ Future<({Map<String, String> files, String? note, bool credentials, DateTime? at
     if (key is String && value is String) files[key] = value;
   });
   final at = DateTime.tryParse(decoded['createdAt'] is String ? decoded['createdAt'] as String : '');
+  // 二进制文件的相对路径；内容在同名 `.files/` 目录里，不在这份 JSON。
+  final copies = <String>[
+    for (final e in (decoded['copies'] is List ? decoded['copies'] as List : const []))
+      if (e is String && e.isNotEmpty) e,
+  ];
   return (
     files: files,
+    copies: copies,
     note: decoded['note'] is String ? decoded['note'] as String : null,
     credentials: decoded['includesCredentials'] == true,
     at: at,
@@ -331,6 +420,43 @@ Future<RestoreResult> restoreBackup(
     }
     onProgress?.call(rel, i + 1, entries.length);
   }
+
+  // 二进制文件：从 `<备份名>.files/` 拷回原位。
+  // 还原前先把这个库可能残留的 -wal/-shm 删掉，否则旧日志会盖掉刚写回去的主库。
+  if (data.copies.isNotEmpty) {
+    final sidecar = Directory('${file.path}.files');
+    for (final rel in data.copies) {
+      if (rel.contains('..') || rel.startsWith('/')) {
+        skipped++;
+        continue;
+      }
+      if (_isContainerBound(rel)) {
+        skipped++;
+        continue;
+      }
+      try {
+        final source = File('${sidecar.path}/$rel');
+        if (!source.existsSync()) {
+          skipped++;
+          continue;
+        }
+        final target = File('${home.path}/$rel');
+        target.parent.createSync(recursive: true);
+        // 旧的 WAL / SHM 会让新库读到过期的页，先清掉。
+        for (final suffix in const ['-wal', '-shm']) {
+          final side = File('${target.path}$suffix');
+          if (side.existsSync()) {
+            try { side.deleteSync() } catch (_) {}
+          }
+        }
+        source.copySync(target.path);
+        written++;
+      } catch (_) {
+        skipped++;
+      }
+    }
+  }
+
   return RestoreResult(entries: written, skipped: skipped);
 }
 
