@@ -463,7 +463,7 @@ export function apply(ctx) {
                 if (pct > 0) up += 1; else if (pct < 0) down += 1
                 sum += pct; n += 1
               }
-              rows.push([w.name || w.symbol, last != null ? String(last) : '—', fmtPct(pct), fmtAmt(amt)])
+              rows.push([w.name || bareSymbol(w.symbol), last != null ? String(last) : '—', fmtPct(pct), fmtAmt(amt)])
             }
             const selId = symbolId(db, selSymbol)
             let cats = [], vals = [], chartName = '', chartCaption = ''
@@ -472,7 +472,7 @@ export function apply(ctx) {
               cats = hist.map((b) => new Date(b.ts).toISOString().slice(5, 10))
               vals = hist.map((b) => toFloat(b.close))
               const sel = wl.find((x) => x.symbol === selSymbol)
-              chartName = sel ? (sel.name || sel.symbol) : selSymbol
+              chartName = sel ? (sel.name || bareSymbol(sel.symbol)) : bareSymbol(selSymbol)
               chartCaption = hist.length
                 ? `${selSymbol} ${zh ? '近' : ''}${hist.length}${zh ? '交易日' : 'd'}`
                 : `${selSymbol} ${zh ? '暂无数据' : 'no data'}`
