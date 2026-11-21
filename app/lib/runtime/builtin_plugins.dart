@@ -35,6 +35,9 @@ class BuiltinPlugins {
     // 图像与视频：带 scope 的目录名，源码在 runtime/media/dsh-media，
     // 由 .github/workflows/ios-compile.yml 内置进 Runner.app/builtin-plugins。
     '@ccch1mneyyy/dsh-media',
+    // 炒股：源码在 runtime/local-tickflow。首次运行自己建库（data/tickflow.db），
+    // 包里只有代码和建表脚本。
+    'local-tickflow',
   ];
 
   /// app bundle 里存放内置插件的位置（由 CI 复制进去）。
