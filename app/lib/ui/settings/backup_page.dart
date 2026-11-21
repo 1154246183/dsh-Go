@@ -218,7 +218,9 @@ class _BackupPageState extends State<BackupPage> {
           title: '备份',
           footer: Text(
             '不备份聊天会话。备份文件在 App 的 Documents/backups 下，'
-            '用 Filza 或「文件」App 都能拷出来。',
+            '用 Filza 或「文件」App 都能拷出来。\n'
+            '插件的数据库（炒股的行情库）是二进制，会放在备份文件旁边的'
+            '同名 .files 文件夹里，一起拷走才完整。',
             style: theme.textTheme.bodySmall?.copyWith(color: dsh.textTertiary),
           ),
           children: [
