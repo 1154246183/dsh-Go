@@ -22,7 +22,16 @@ const HIDDEN_STRIP = { text: '' }
 
 const zhOf = (loc) => !String(loc || '').startsWith('en')
 
-// 代码规范化：600519 / sz000001 / 00700.HK → 带后缀的统一写法
+// 显示用的代码：去掉 .SH/.SZ/.BJ 后缀，输入框里只写数字。
+// 港股/美股的 .HK/.US 保留——去掉就分不清 00700 是港股还是深市。
+export function bareSymbol(sym) {
+  const s = String(sym || '').trim().toUpperCase()
+  return s.replace(/\.(SH|SZ|BJ)$/, '')
+}
+
+// 代码规范化：600519 / sz000001 / 00700.HK → 带后缀的统一写法。
+// 输入框只收纯数字，后缀这里按首位补：6/9/5 沪、0/3/1/2 深、4/8 北；
+// 5 位数字仍按港股处理（港股就是 5 位，A 股是 6 位，不会撞）。
 export function normalizeSymbol(raw) {
   let s = String(raw || '').trim().toUpperCase().replace(/\s+/g, '')
   if (!s) return null
@@ -142,7 +151,7 @@ export function apply(ctx) {
             const s = byId.get(w.symbol_id)
             let pct = s ? s.pct : null
             if (pct == null) pct = lat.get(w.symbol_id) ?? null
-            parts.push(`${(w.name || w.symbol).slice(0, 4)} ${pct != null ? fmtPct(pct) : '—'}`)
+            parts.push(`${(w.name || bareSymbol(w.symbol)).slice(0, 4)} ${pct != null ? fmtPct(pct) : '—'}`)
           }
           let text = parts.join(' ')
           if (wl.length > 3) text += ` +${wl.length - 3}`
@@ -179,7 +188,7 @@ export function apply(ctx) {
         const listForm = rich
           ? [{ type: 'form', submit: 'saveWatch', submitLabel: zh ? '保存自选' : 'Save list', children: [
               { type: 'textField', label: zh ? '自选股代码' : 'Symbols', bind: 'data.symbolsInput',
-                placeholder: '600519.SH, 000001.SZ, 510300.SH',
+                placeholder: '600519, 000001, 510300',
                 multiline: true, maxLines: 4, maxLength: 800 },
             ] }]
           : [{ type: 'text', tone: 'muted',
@@ -249,7 +258,7 @@ export function apply(ctx) {
                 : (zh ? '未填 Key：免费源只给日K与标的，实时行情不可用。' : 'No key: daily K only.'),
               keyTone: set ? 'good' : 'warn',
               keyInput: '',
-              symbolsInput: wl.map((w) => w.symbol).join(', '),
+              symbolsInput: wl.map((w) => bareSymbol(w.symbol)).join(', '),
               enabled: config().enabled !== false,
               enabledText: (config().enabled !== false)
                 ? (zh ? '已启用：会读行情、开数据库，行情条在跑。'
@@ -474,8 +483,8 @@ export function apply(ctx) {
             else if (!hasRealtime()) status = zh ? '免费源：日K可用，实时需在设置填 Key' : 'Free tier: daily K only'
             else status = zh ? '实时行情已接通' : 'Realtime connected'
             const picks = wl.slice(0, 12).map((w) => ({
-              title: w.name || w.symbol,
-              subtitle: w.symbol,
+              title: w.name || bareSymbol(w.symbol),
+              subtitle: bareSymbol(w.symbol),
               trailing: w.symbol === selSymbol ? (zh ? '查看中' : 'shown') : '',
               icon: 'chart',
               action: { id: 'pick', args: { symbol: w.symbol } },
