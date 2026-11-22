@@ -12,12 +12,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../l10n/l10n.dart';
 import '../../state/app_info.dart';
-import '../../state/star_prompt.dart' show starLinkOpenerProvider;
 import '../../state/update_state.dart';
 import '../shell/brand_mark.dart';
 import '../shell/page_frame.dart';
-import '../star/star_prompt_dialog.dart' show openStarProject;
-import '../theme/app_icons.dart';
 import '../theme/theme.dart';
 import '../update/update_tiles.dart';
 import 'settings_widgets.dart';
@@ -49,23 +46,6 @@ class AboutPage extends ConsumerWidget {
             ),
             const AppUpdateTiles(),
             SettingsTile(
-              key: const ValueKey('settings-star'),
-              spot: Spots.star,
-              onTap: () => unawaited(
-                openStarProject(ProviderScope.containerOf(context, listen: false), ScaffoldMessenger.maybeOf(context)),
-              ),
-            ),
-            SettingsTile(
-              spot: Spots.licenses,
-              onTap: () => showLicensePage(
-                context: context,
-                applicationName: AppInfo.name,
-                applicationVersion: version,
-                applicationIcon: const Padding(padding: EdgeInsets.all(12), child: BrandMark(size: 56, tile: true)),
-                applicationLegalese: AppInfo.disclaimer,
-              ),
-            ),
-            SettingsTile(
               key: const ValueKey('settings-cleanup'),
               title: '清理缓存',
               subtitle: '删掉可再生的缓存和日志，会话、凭据、技能、附件都不动',
@@ -76,29 +56,6 @@ class AboutPage extends ConsumerWidget {
               title: '打开数据目录',
               subtitle: '用 Filza 打开 DSH 的 .dsh 目录，可直接翻缓存和会话文件',
               onTap: () => unawaited(_openDataDir(context)),
-            ),
-          ],
-        ),
-        SettingsSection(
-          title: l10n.hubAboutAuthor,
-          children: [
-            const SettingsTile(title: AppInfo.author),
-            _authorLink(
-              context,
-              ref,
-              'about-author-bilibili',
-              l10n.hubAboutBilibili,
-              AppInfo.authorBilibiliName,
-              AppInfo.authorBilibiliUrl,
-            ),
-            _authorLink(context, ref, 'about-author-x', l10n.hubAboutX, AppInfo.authorXHandle, AppInfo.authorXUrl),
-            _authorLink(
-              context,
-              ref,
-              'about-author-github',
-              l10n.hubAboutGithub,
-              '@${AppInfo.author}',
-              AppInfo.authorGithubUrl,
             ),
           ],
         ),
@@ -257,39 +214,6 @@ class AboutPage extends ConsumerWidget {
     }
     if (messenger?.mounted ?? false) {
       messenger!.showSnackBar(SnackBar(content: Text('已释放 ${_sizeText(freed)}')));
-    }
-  }
-
-  Widget _authorLink(BuildContext context, WidgetRef ref, String key, String title, String handle, String url) =>
-      Semantics(
-        link: true,
-        child: SettingsTile(
-          key: ValueKey(key),
-          title: title,
-          subtitle: handle,
-          trailing: Icon(AppIcons.openExternal, size: 18, color: DshColors.of(context).textTertiary),
-          onTap: () => unawaited(_openAuthorLink(context, ref, Uri.parse(url))),
-        ),
-      );
-
-  Future<void> _openAuthorLink(BuildContext context, WidgetRef ref, Uri url) async {
-    final l10n = context.l10n;
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    try {
-      if (await ref.read(starLinkOpenerProvider)(url)) return;
-    } catch (_) {
-      // As with the project's link, fall back to copying when no browser opens.
-    }
-    var copied = true;
-    try {
-      await Clipboard.setData(ClipboardData(text: url.toString()));
-    } catch (_) {
-      copied = false;
-    }
-    if (messenger?.mounted ?? false) {
-      messenger!.showSnackBar(
-        SnackBar(content: Text(copied ? l10n.shellBrowserUrlCopied : l10n.stateBrowserOpenFailed)),
-      );
     }
   }
 }
