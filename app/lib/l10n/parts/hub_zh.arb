@@ -46,6 +46,8 @@
   "hubSettingsPhoneFilesHint": "AI 可读写手机存储",
   "hubSettingsVisualReplies": "可视化回复",
   "hubSettingsVisualRepliesHint": "图表、对比卡和可点的选项",
+  "hubSettingsAllowLandscape": "自动横屏",
+  "hubSettingsAllowLandscapeHint": "关闭后固定竖屏，横过来也不转",
   "hubSettingsPhoneControl": "手机操控",
   "hubSettingsPhoneControlHint": "看屏幕、帮你点按",
   "hubSettingsPreferences": "个人偏好",
