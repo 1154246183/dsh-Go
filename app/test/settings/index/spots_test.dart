@@ -90,12 +90,12 @@ void main() {
   });
 
   test('the way there reads like the guide; a result path names the hub group', () {
-    expect(SettingsIndex.trail(Spots.phoneConfirm, zh), ['设置', '手机操控', '确认方式']);
+    expect(SettingsIndex.trail(Spots.phoneAutoCollapse, zh), ['设置', '手机操控', '闲置时自动收起']);
     expect(SettingsIndex.trail(SettingsIndex.entry(SettingsPageId.phone), zh), ['设置', '手机操控']);
-    expect(SettingsIndex.trail(Spots.phoneConfirm, en), ['Settings', 'Phone control', 'Confirmation']);
+    expect(SettingsIndex.trail(Spots.phoneAutoCollapse, en), ['Settings', 'Phone control', 'Collapse when idle']);
     // A page shows the pages down to itself; a row the page it is on.
     expect(SettingsIndex.path(SettingsIndex.entry(SettingsPageId.phone), zh), ['设置', '能力', '手机操控']);
-    expect(SettingsIndex.path(Spots.phoneConfirm, zh), ['设置', '能力', '手机操控']);
+    expect(SettingsIndex.path(Spots.phoneAutoCollapse, zh), ['设置', '能力', '手机操控']);
     expect(SettingsIndex.path(SettingsIndex.entry(SettingsPageId.permission), zh), ['设置', 'AI', '权限']);
     expect(SettingsIndex.path(Spots.phoneFiles, en), ['Settings', 'AI', 'Permissions']);
     expect(SettingsIndex.path(Spots.chatTextSize, zh), ['设置', zh.hubSettingsAppearance]);
