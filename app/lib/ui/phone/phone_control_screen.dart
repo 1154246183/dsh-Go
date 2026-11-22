@@ -16,10 +16,8 @@ import '../../state/ios_phone_link_state.dart';
 import '../../state/phone_overlay_prefs.dart';
 import '../../state/phone_state.dart';
 import '../../state/phone_turn_end.dart';
-import '../common/app_sheet.dart';
 import '../common/ask_ai.dart';
 import '../common/brief_notice.dart';
-import '../common/risk_notice.dart';
 import '../common/feature_tile.dart';
 import '../settings/background_guide_page.dart';
 import '../settings/index/spots.dart';
@@ -60,9 +58,6 @@ extension PhoneConfirmModeText on PhoneConfirmMode {
     PhoneConfirmMode.always => AppIcons.noConfirm,
   };
 }
-
-/// Where a row of 确认方式's 「这些由你来操作」 goes.
-enum _ConfirmLink { appRules, unlocks }
 
 /// 设置 → 手机操控: the master switch behind
 /// the 显著披露, permission status with fixes, a test read, 不打扰模式, the app
@@ -122,72 +117,6 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(text)));
-  }
-
-  /// 确认方式: the three ways, then what stays with the person whichever is
-  /// picked (so 全程自动 stopping at a password isn't taken for a fault),
-  /// with the two places those are changed.
-  Future<void> _pickConfirmMode(PhoneConfirmMode current) async {
-    final picked = await showAppSheet<Object>(
-      context,
-      isScrollControlled: true,
-      builder: (sheet) => SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SheetHeader(context.l10n.phoneConfirmTitle),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SheetGroup(
-                      children: [
-                        for (final mode in PhoneConfirmMode.values)
-                          ListPageRow(
-                            icon: mode.icon,
-                            title: mode.label,
-                            subtitle: mode.detail,
-                            chevron: false,
-                            trailing: mode == current
-                                ? Icon(AppIcons.selected, size: 22, color: Theme.of(sheet).colorScheme.primary)
-                                : const SizedBox.square(dimension: 22),
-                            onTap: () => Navigator.pop(sheet, mode),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _YoursGroup(onLink: (link) => Navigator.pop(sheet, link)),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted) return;
-    switch (picked) {
-      case _ConfirmLink.appRules:
-        _push(const PhoneAppRulesPage());
-        return;
-      case _ConfirmLink.unlocks:
-        _push(const PhoneUnlockPage());
-        return;
-    }
-    final next = picked is PhoneConfirmMode ? picked : null;
-    if (next == null || next == current) return;
-    // 本任务免确认 needs no notice: each task still asks once, at its start.
-    if (next == PhoneConfirmMode.always) {
-      final ok = await confirmRisk(context, RiskNotices.phoneConfirmAlways);
-      if (!ok || !mounted) return;
-    }
-    final done = await _phone.setConfirmMode(next);
-    if (!done && mounted) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(context.l10n.phoneConfirmSaveFailed)));
-    }
   }
 
   void _push(Widget page) => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
@@ -634,13 +563,6 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
             onTap: () => _push(const PhoneAppRulesPage()),
           ),
           ListPageRow(
-            icon: policies?.confirmMode.icon ?? AppIcons.askFirst,
-            spot: Spots.phoneConfirm,
-            subtitle: policies?.confirmMode.label ?? context.l10n.phoneControlLoading,
-            chevron: policies != null,
-            onTap: policies == null ? null : () => _pickConfirmMode(policies.confirmMode),
-          ),
-          ListPageRow(
             icon: AppIcons.unlocks,
             iconColor: policies?.unlocks.isNotEmpty ?? false ? DshColors.of(context).warning : null,
             spot: SettingsIndex.entry(SettingsPageId.phoneUnlocks),
@@ -739,82 +661,6 @@ class _WhatItDoes extends StatelessWidget {
     );
   }
 }
-
-/// 确认方式's 「这些由你来操作」: the hard rules still in place (a lifted one
-/// drops out), the 不碰 list, and where each is changed. The lines start where
-/// the rows' titles do.
-class _YoursGroup extends ConsumerWidget {
-  const _YoursGroup({required this.onLink});
-
-  final ValueChanged<_ConfirmLink> onLink;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = context.l10n;
-    final theme = Theme.of(context);
-    final policies = ref.watch(phoneProvider.select((s) => s.policies));
-    final lifted = policies?.unlocks ?? const <PhoneUnlock>{};
-    final lines = [
-      for (final unlock in PhoneUnlock.values)
-        if (!lifted.contains(unlock)) unlock.yours(l10n),
-      l10n.phoneYoursDenyList,
-    ];
-    return SheetGroup(
-      key: const ValueKey('confirm-yours'),
-      title: l10n.phoneYoursTitle,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final line in lines)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: ListPageRow.horizontal, vertical: 5),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: ListPageRow.glyphSlot,
-                        height: (theme.textTheme.bodyMedium?.fontSize ?? 14) * 1.5,
-                        child: Center(
-                          child: DecoratedBox(
-                            decoration: ShapeDecoration(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              shape: const CircleBorder(),
-                            ),
-                            child: const SizedBox.square(dimension: 4),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: ListPageRow.gap),
-                      Expanded(child: Text(line, style: theme.textTheme.bodyMedium?.copyWith(height: 1.5))),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-        ListPageRow(
-          icon: AppIcons.appRules,
-          spot: SettingsIndex.entry(SettingsPageId.phoneAppRules),
-          subtitle: policies == null
-              ? l10n.phoneControlLoading
-              : l10n.phoneControlPolicySummary(policies.denyPackages.length, policies.confirmEveryWritePackages.length),
-          onTap: () => onLink(_ConfirmLink.appRules),
-        ),
-        ListPageRow(
-          icon: AppIcons.unlocks,
-          spot: SettingsIndex.entry(SettingsPageId.phoneUnlocks),
-          subtitle: phoneUnlockSummary(l10n, policies) ?? l10n.phoneControlLoading,
-          onTap: () => onLink(_ConfirmLink.unlocks),
-        ),
-      ],
-    );
-  }
-}
-
 
 /// 「不再逐次确认」开关：直接读写原生那个 alwaysAllow 键。
 ///
