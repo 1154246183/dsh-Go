@@ -273,14 +273,6 @@ class _ThisChatCardState extends ConsumerState<_ThisChatCard> {
       title: l10n.nearbyThisChat,
       margin: const EdgeInsets.symmetric(horizontal: PlusPanelMetrics.side),
       children: [
-        ListPageRow(
-          title: l10n.featuresPermissions,
-          value: switch (modes.preset) {
-            final preset? => permissionName(preset),
-            null => null,
-          },
-          onTap: () => SheetNavigator.of(context).push((_) => SessionPermissionPage(sessionId: widget.sessionId)),
-        ),
         MergeSemantics(
           child: ListPageRow(
             title: l10n.hubSessionPlanMode,
