@@ -689,14 +689,6 @@ abstract final class Spots {
     condition: SpotCondition.localHost,
     androidOnly: true,
   );
-  static final permissionPhoneConfirm = SettingSpot(
-    'permission-phone-confirm',
-    page: SettingsPageId.permission,
-    title: (l) => l.hubPermissionPhoneConfirm,
-    keywords: (l) => l.searchKwPhoneConfirmEntry,
-    androidOnly: true,
-  );
-
   // 个性化.
   static final visualReplies = SettingSpot(
     'visual-replies',
@@ -1145,7 +1137,6 @@ final _rows = <SettingSpot>[
   Spots.permissionCurrent,
   Spots.permissionDefault,
   Spots.phoneFiles,
-  Spots.permissionPhoneConfirm,
   Spots.visualReplies,
   Spots.phoneA11yRestore,
   Spots.phoneAutoCollapse,
