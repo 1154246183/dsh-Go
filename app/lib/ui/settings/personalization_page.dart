@@ -95,6 +95,12 @@ class PersonalizationPage extends ConsumerWidget {
               spot: SettingsIndex.entry(SettingsPageId.agentPresets),
               onTap: () => _push(context, const AgentPresetsPage()),
             ),
+            SettingsSwitchTile(
+              spot: Spots.allowLandscape,
+              subtitle: l10n.hubSettingsAllowLandscapeHint,
+              value: ref.watch(settingsProvider.select((s) => s.allowLandscape)),
+              onChanged: (v) => unawaited(ref.read(settingsProvider.notifier).setAllowLandscape(v)),
+            ),
           ],
         ),
       ],
