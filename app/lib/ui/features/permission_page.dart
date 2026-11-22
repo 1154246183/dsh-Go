@@ -20,11 +20,9 @@ import '../../state/settings_state.dart';
 import '../../runtime/runtime_bridge.dart';
 import '../../state/engine_control.dart';
 import '../../state/hosts_state.dart';
-import '../../state/phone_state.dart';
 import '../common/ask_ai.dart';
 import '../common/list_page_row.dart';
 import '../common/risk_notice.dart';
-import '../phone/phone_control_screen.dart' show PhoneConfirmModeText;
 import '../settings/index/settings_pages.dart' show openSpot;
 import '../settings/index/spots.dart';
 import '../shell/page_frame.dart';
@@ -185,7 +183,6 @@ class _PermissionPageState extends ConsumerState<PermissionPage> {
 
     final phoneFiles = ref.watch(settingsProvider.select((s) => s.phoneStorage));
     final android = ref.watch(androidSystemFeaturesProvider);
-    final confirm = android ? ref.watch(phoneProvider.select((s) => s.policies?.confirmMode)) : null;
     final phone = ListPageCard(
       title: l10n.hubPermissionPhone,
       children: [
@@ -199,12 +196,6 @@ class _PermissionPageState extends ConsumerState<PermissionPage> {
               trailing: Switch.adaptive(value: phoneFiles, onChanged: (v) => unawaited(_onPhoneFiles(v))),
             ),
           ),
-        // The control itself stays on 手机操控: this opens it at that row.
-        ListPageRow(
-          spot: Spots.permissionPhoneConfirm,
-          value: confirm?.label,
-          onTap: () => unawaited(openSpot(context, Spots.phoneConfirm)),
-        ),
       ],
     );
 
