@@ -28,16 +28,13 @@ import '../../../state/chat_state.dart';
 import '../../../state/connection_state.dart';
 import '../../../state/features_state.dart';
 import '../../../state/hosts_state.dart';
-import '../../../state/phone_state.dart';
 import '../../../state/session_modes.dart';
 import '../../common/app_sheet.dart';
 import '../../common/list_page_row.dart';
-import '../../common/risk_notice.dart';
 import '../../common/sheet_navigator.dart';
 import '../../common/sheet_title_bar.dart';
 import '../../features/feature_format.dart';
 import '../../features/permission_page.dart' show confirmPermission, writePermissionDefault;
-import '../../phone/phone_control_screen.dart' show PhoneConfirmModeText;
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
 
@@ -110,7 +107,7 @@ Future<void> showPermissionSheet(BuildContext context, String sessionId) {
   );
 }
 
-class _PlusRoot extends ConsumerWidget {
+class _PlusRoot extends StatelessWidget {
   const _PlusRoot({required this.files, required this.generate, required this.sessionId});
 
   final bool files;
@@ -118,10 +115,9 @@ class _PlusRoot extends ConsumerWidget {
   final String? sessionId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final l10n = context.l10n;
     final sessionId = this.sessionId;
-    final phoneOn = ref.watch(phoneProvider.select((s) => s.status.enabled));
     final tiles = [
       (AttachChoice(AttachSource.gallery), AppIcons.gallery, l10n.chatGallery, 0),
       (AttachChoice(AttachSource.camera), AppIcons.camera, l10n.chatTakePhoto, 2),
@@ -146,7 +142,6 @@ class _PlusRoot extends ConsumerWidget {
         ),
         const _PluginTools(),
         if (sessionId != null) ...[const SizedBox(height: 16), _ThisChatCard(sessionId: sessionId)],
-        if (phoneOn) ...[const SizedBox(height: 24), const _PhoneCard()],
         const SizedBox(height: 20),
       ],
     );
@@ -298,28 +293,6 @@ class _ThisChatCardState extends ConsumerState<_ThisChatCard> {
   }
 }
 
-/// 手机操控: how phone actions are confirmed.
-class _PhoneCard extends ConsumerWidget {
-  const _PhoneCard();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = context.l10n;
-    final mode = ref.watch(phoneProvider.select((s) => s.policies?.confirmMode));
-    return ListPageCard(
-      title: l10n.phoneControlTitle,
-      margin: const EdgeInsets.symmetric(horizontal: PlusPanelMetrics.side),
-      children: [
-        ListPageRow(
-          title: l10n.phoneConfirmTitle,
-          value: mode?.label,
-          onTap: mode == null ? null : () => SheetNavigator.of(context).push((_) => const _ConfirmModePage()),
-        ),
-      ],
-    );
-  }
-}
-
 /// 本对话的权限: the four presets, then what new conversations start with.
 class SessionPermissionPage extends ConsumerStatefulWidget {
   const SessionPermissionPage({super.key, required this.sessionId});
@@ -449,61 +422,6 @@ class _SessionPermissionPageState extends ConsumerState<SessionPermissionPage> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [SheetTitleBar(l10n.nearbyPermissionTitle), body, const SizedBox(height: 16)],
-    );
-  }
-}
-
-/// 确认方式 inside the panel: the three modes; 始终免确认 asks first.
-class _ConfirmModePage extends ConsumerWidget {
-  const _ConfirmModePage();
-
-  Future<void> _pick(BuildContext context, WidgetRef ref, PhoneConfirmMode next, PhoneConfirmMode? current) async {
-    if (next == current) return;
-    final sheet = SheetNavigator.of(context);
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    final failed = context.l10n.phoneConfirmSaveFailed;
-    if (next == PhoneConfirmMode.always) {
-      final ok = await confirmRisk(context, RiskNotices.phoneConfirmAlways);
-      if (!ok || !context.mounted) return;
-    }
-    final done = await ref.read(phoneProvider.notifier).setConfirmMode(next);
-    if (!done) {
-      messenger?.showSnackBar(SnackBar(content: Text(failed)));
-      return;
-    }
-    if (sheet.mounted && sheet.canPop) sheet.pop();
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = context.l10n;
-    final current = ref.watch(phoneProvider.select((s) => s.policies?.confirmMode));
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SheetTitleBar(l10n.phoneConfirmTitle),
-        SheetGroup(
-          children: [
-            for (final mode in PhoneConfirmMode.values)
-              Semantics(
-                selected: mode == current,
-                inMutuallyExclusiveGroup: true,
-                child: ListPageRow(
-                  icon: mode.icon,
-                  title: mode.label,
-                  subtitle: mode.detail,
-                  chevron: false,
-                  trailing: mode == current
-                      ? Icon(AppIcons.selected, size: 22, color: Theme.of(context).colorScheme.primary)
-                      : const SizedBox.square(dimension: 22),
-                  onTap: () => unawaited(_pick(context, ref, mode, current)),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 16),
-      ],
     );
   }
 }
