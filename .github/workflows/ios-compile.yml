@@ -146,8 +146,13 @@ jobs:
           dest="$app/builtin-plugins/dsh-our-free-model"
           mkdir -p "$dest"
           # 按插件自己的 files 清单取；win32 引擎分片 iOS 用不上，去掉省 31 MB。
+          #
+          # 钉在 e05742d170，不要跟 main：上游 2026-11-22 11:24 的 2f305c83
+          # 「engine: 内嵌纯净上游 magpie」把 magpie 整份塞进 vendor，这个插件
+          # 从 78M 涨到 107M，IPA 跟着从 144M 涨到 161M。跟 main 就随上游飘，
+          # 包体和可用性都不受这里控制。
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/ofm.tar.gz" \
-            https://codeload.github.com/Ebony-Vinyl/dsh-our-free-model/tar.gz/refs/heads/main
+            https://codeload.github.com/Ebony-Vinyl/dsh-our-free-model/tar.gz/e05742d170
           mkdir -p "$RUNNER_TEMP/ofm"
           tar -xzf "$RUNNER_TEMP/ofm.tar.gz" -C "$RUNNER_TEMP/ofm" --strip-components=1
           src="$RUNNER_TEMP/ofm"
