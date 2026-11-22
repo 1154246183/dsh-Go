@@ -697,6 +697,11 @@ abstract final class Spots {
     keywords: (l) => l.searchKwVisualReplies,
     condition: SpotCondition.localHost,
   );
+  static final allowLandscape = SettingSpot(
+    'allow-landscape',
+    page: SettingsPageId.personalization,
+    title: (l) => l.hubSettingsAllowLandscape,
+  );
 
   // 手机操控.
   static final phoneA11yRestore = SettingSpot(
@@ -1126,6 +1131,7 @@ final _rows = <SettingSpot>[
   Spots.permissionDefault,
   Spots.phoneFiles,
   Spots.visualReplies,
+  Spots.allowLandscape,
   Spots.phoneA11yRestore,
   Spots.phoneAutoCollapse,
   Spots.phoneReturn,
