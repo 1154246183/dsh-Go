@@ -714,14 +714,6 @@ abstract final class Spots {
     keywords: (l) => l.searchKwA11yRestore,
     condition: SpotCondition.phoneControlOn,
   );
-  static final phoneConfirm = SettingSpot(
-    'phone-confirm',
-    page: SettingsPageId.phone,
-    title: (l) => l.phoneConfirmTitle,
-    keywords: (l) => l.searchKwPhoneConfirm,
-    freq: Freq.medium,
-    link: 'phone-confirm',
-  );
   static final phoneAutoCollapse = SettingSpot(
     'phone-auto-collapse',
     page: SettingsPageId.phone,
@@ -1156,7 +1148,6 @@ final _rows = <SettingSpot>[
   Spots.permissionPhoneConfirm,
   Spots.visualReplies,
   Spots.phoneA11yRestore,
-  Spots.phoneConfirm,
   Spots.phoneAutoCollapse,
   Spots.phoneReturn,
   Spots.phoneBackgroundGuide,
