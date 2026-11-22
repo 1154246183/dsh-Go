@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -7,6 +10,20 @@ import '../performance/performance_state.dart';
 import '../secrets/secure_storage.dart';
 import 'provider_keys.dart';
 import 'read_list_epoch.dart';
+
+/// 按 [allow] 设定屏幕方向：开 = 跟随手机转，关 = 钉在竖屏。
+///
+/// iOS 上这由引擎侧的系统调用完成，方向本身仍受 Info.plist 里声明的几种
+/// 约束（竖屏、左横、右横）。启动时和开关变化时都调一次。
+Future<void> applyScreenOrientation(bool allow) => SystemChrome.setPreferredOrientations(
+  allow
+      ? const [
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]
+      : const [DeviceOrientation.portraitUp],
+);
 
 /// User settings: the DeepSeek API key (and custom-provider keys, see
 /// [ProviderKeyVault]) live in the Android Keystore-backed secure storage;
@@ -25,6 +42,7 @@ class AppSettings {
     this.chatTextScale = 1.0,
     this.foldCompletedTurns = true,
     this.visualReplies = true,
+    this.allowLandscape = true,
     this.customProviderIds = const {},
     this.loaded = false,
   });
@@ -76,6 +94,10 @@ class AppSettings {
   /// Off only drops the instructions; views that arrive are still drawn.
   final bool visualReplies;
 
+  /// Follow the phone into landscape. Off pins the app to portrait, so turning
+  /// the device (or laying it flat) never rotates the chat under a thumb.
+  final bool allowLandscape;
+
   /// Custom providers created on the local engine whose key is kept on the
   /// phone ([ProviderKeyVault]). Known at launch, before the engine runs, so
   /// the first-run gate can tell "has a model to talk to" without it.
@@ -100,6 +122,7 @@ class AppSettings {
     double? chatTextScale,
     bool? foldCompletedTurns,
     bool? visualReplies,
+    bool? allowLandscape,
     Set<String>? customProviderIds,
     bool? loaded,
   }) => AppSettings(
@@ -115,6 +138,7 @@ class AppSettings {
     chatTextScale: chatTextScale ?? this.chatTextScale,
     foldCompletedTurns: foldCompletedTurns ?? this.foldCompletedTurns,
     visualReplies: visualReplies ?? this.visualReplies,
+    allowLandscape: allowLandscape ?? this.allowLandscape,
     customProviderIds: customProviderIds ?? this.customProviderIds,
     loaded: loaded ?? this.loaded,
   );
@@ -142,6 +166,7 @@ class SettingsController extends Notifier<AppSettings> {
   static const _chatTextScaleKey = 'chat_text_scale';
   static const _foldTurnsKey = 'fold_completed_turns';
   static const _visualRepliesKey = 'visual_replies';
+  static const _allowLandscapeKey = 'allow_landscape';
   static const _secure = AppSecureStorage();
   late Future<void> _loaded;
 
@@ -189,9 +214,12 @@ class SettingsController extends Notifier<AppSettings> {
       chatTextScale: _knownScale(prefs.getDouble(_chatTextScaleKey)),
       foldCompletedTurns: prefs.getBool(_foldTurnsKey) ?? true,
       visualReplies: prefs.getBool(_visualRepliesKey) ?? true,
+      allowLandscape: prefs.getBool(_allowLandscapeKey) ?? true,
       customProviderIds: providerIds,
       loaded: true,
     );
+    // 设置读出来了，方向按保存的偏好落一次（默认跟随手机）。
+    unawaited(applyScreenOrientation(prefs.getBool(_allowLandscapeKey) ?? true));
   }
 
   /// Takes the keys in again once the saved credentials were cleared
@@ -275,6 +303,14 @@ class SettingsController extends Notifier<AppSettings> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_visualRepliesKey, value);
     state = state.copyWith(visualReplies: value);
+  }
+
+  /// 横屏开关：关掉立刻钉在竖屏，打开立刻恢复跟随手机。
+  Future<void> setAllowLandscape(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_allowLandscapeKey, value);
+    state = state.copyWith(allowLandscape: value);
+    await applyScreenOrientation(value);
   }
 
   Future<void> setWebPhoneLayout(bool value) async {
