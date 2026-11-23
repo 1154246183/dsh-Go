@@ -3,9 +3,12 @@
 // the same two columns as the answer text.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../state/settings_state.dart';
 import '../../common/bleed.dart';
 import '../../theme/app_icons.dart';
+import '../../theme/oklch.dart';
 import '../../theme/theme.dart';
 
 /// 过程行的几何:**左 24 图形列 + 8 间距 + 文字列**,和正文左缘对齐。
@@ -44,22 +47,45 @@ abstract final class StreamRow {
 }
 
 /// 一行过程行的外壳:最小 32 高、上下 4、点按高亮向两侧溢出 8。
-class StreamRowFrame extends StatelessWidget {
+///
+/// 开了「聊天背景框」时，过程行也垫一层同色相的淡底（比正文更淡，
+/// [faintRatio]）：思考、搜索、运行、查看后台任务这些才不至于直接浮在
+/// 壁纸上——它们本来就是次要信息，底色也该更轻。
+class StreamRowFrame extends ConsumerWidget {
   const StreamRowFrame({super.key, required this.child, this.onTap, this.onLongPress});
 
   final Widget child;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
+  /// 过程行的底色是正文的这么多倍——比正文淡一档。
+  static const faintRatio = 0.55;
+
   @override
-  Widget build(BuildContext context) {
-    final content = ConstrainedBox(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final backdrop = ref.watch(
+      settingsProvider.select(
+        (s) => (on: s.chatBackdrop, hue: s.chatBackdropHue, alpha: s.chatBackdropAlpha, radius: s.chatBackdropRadius),
+      ),
+    );
+    Widget content = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: StreamRow.minHeight),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: StreamRow.bleed, vertical: 4),
         child: child,
       ),
     );
+    if (backdrop.on) {
+      final dark = Theme.of(context).brightness == Brightness.dark;
+      final tint = Oklch(dark ? 0.24 : 0.97, dark ? 0.05 : 0.03, backdrop.hue).toColor();
+      content = DecoratedBox(
+        decoration: BoxDecoration(
+          color: tint.withValues(alpha: (backdrop.alpha * faintRatio).clamp(0.0, 1.0)),
+          borderRadius: BorderRadius.circular((backdrop.radius * 0.75).clamp(0.0, 999.0)),
+        ),
+        child: content,
+      );
+    }
     return Bleed(
       horizontal: StreamRow.bleed,
       child: onTap == null && onLongPress == null
