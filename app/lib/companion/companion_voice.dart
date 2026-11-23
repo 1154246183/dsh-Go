@@ -298,7 +298,11 @@ class CompanionSpeaker {
           if (!started) {
             _events.add(CompanionVoiceEvent(CompanionVoiceEventType.error, line.id));
           } else {
-            await end.future.timeout(const Duration(minutes: 1), onTimeout: () {});
+            // 等这一句真正放完。原来这里钉了 1 分钟上限，读长回复时会在
+            // 一分钟处被掐掉，听感就是"只读了开头"。现在按字数估时长
+            // （中文约 4 字/秒），再给一分钟余量，长文不会被截断。
+            final estimate = Duration(seconds: (line.text.length ~/ 4) + 60);
+            await end.future.timeout(estimate, onTimeout: () {});
           }
         } finally {
           _finish(line.id);
