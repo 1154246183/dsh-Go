@@ -159,14 +159,14 @@ class _ReadAloudSettingsPageState extends ConsumerState<ReadAloudSettingsPage> {
         ),
       );
 
-  String _sourceName(AppLocalizations l10n, CompanionVoiceSource s) => switch (s) {
+  String _sourceName(L10n l10n, CompanionVoiceSource s) => switch (s) {
     CompanionVoiceSource.system => l10n.companionVoiceSystem,
     CompanionVoiceSource.preset => l10n.companionVoicePreset,
     CompanionVoiceSource.openai => l10n.companionVoiceOpenai,
     CompanionVoiceSource.custom => l10n.companionVoiceCustom,
   };
 
-  String? _sourceHint(AppLocalizations l10n, CompanionVoiceSource s) => switch (s) {
+  String? _sourceHint(L10n l10n, CompanionVoiceSource s) => switch (s) {
     CompanionVoiceSource.system => l10n.companionVoiceSystemHint,
     CompanionVoiceSource.openai => l10n.companionVoiceOpenaiHint,
     _ => null,
