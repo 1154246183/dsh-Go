@@ -205,6 +205,7 @@ class _WallpaperSectionState extends ConsumerState<WallpaperSection> {
                 onChanged: (v) => unawaited(ref.read(settingsProvider.notifier).setGlassOpacity(v)),
                 onChangeEnd: (_) {},
               ),
+              const ChatBackdropSection(),
               SettingsTile(
                 key: const ValueKey('wallpaper-replace'),
                 title: l10n.wallpaperReplace,
@@ -659,4 +660,71 @@ class _SketchPainter extends CustomPainter {
       old.faint != faint ||
       old.accent != accent ||
       old.padding != padding;
+}
+
+/// 聊天背景框：给 AI 回答正文垫一层自己选的底色。
+///
+/// 壁纸一调亮，正文就容易和花纹混在一起。这里把颜色（色相）、深浅（不透明
+/// 度）和圆角交给人调，先看效果再定。开关关掉时正文照旧没有任何底。
+class ChatBackdropSection extends ConsumerWidget {
+  const ChatBackdropSection({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+    final on = settings.chatBackdrop;
+    final brightness = Theme.of(context).brightness;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 2,
+      children: [
+        SettingsSwitchTile(
+          key: const ValueKey('chat-backdrop'),
+          icon: AppIcons.textSize,
+          title: '聊天背景框',
+          subtitle: '给回答正文垫一层底色，壁纸再花也看得清',
+          value: on,
+          onChanged: (v) => unawaited(notifier.setChatBackdrop(on: v)),
+        ),
+        ExpandReveal(
+          open: on,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 2,
+            children: [
+              SettingsTile(
+                key: const ValueKey('chat-backdrop-hue'),
+                title: '颜色',
+                value: SizedBox(
+                  height: 36,
+                  child: HueSlider(
+                    hue: settings.chatBackdropHue,
+                    brightness: brightness,
+                    onChanged: (h) => unawaited(notifier.setChatBackdrop(hue: h)),
+                  ),
+                ),
+              ),
+              WallpaperSliderRow(
+                key: const ValueKey('chat-backdrop-alpha'),
+                title: '不透明度',
+                value: settings.chatBackdropAlpha,
+                onChanged: (v) => unawaited(notifier.setChatBackdrop(alpha: v)),
+                onChangeEnd: (_) {},
+              ),
+              WallpaperSliderRow(
+                key: const ValueKey('chat-backdrop-radius'),
+                title: '圆角',
+                value: (settings.chatBackdropRadius / 28).clamp(0.0, 1.0),
+                onChanged: (v) => unawaited(notifier.setChatBackdrop(radius: v * 28)),
+                onChangeEnd: (_) {},
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
