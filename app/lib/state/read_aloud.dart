@@ -41,6 +41,9 @@ class ReadAloudController extends Notifier<ReadAloudState> {
   StreamSubscription<CompanionVoiceEvent>? _events;
   String? _current;
 
+  /// 这次朗读切成了几块（`id`, `id#1`, …）；只有最后一块播完才复位。
+  int _chunks = 1;
+
   @override
   ReadAloudState build() {
     ref.onDispose(() {
@@ -77,7 +80,19 @@ class ReadAloudController extends Notifier<ReadAloudState> {
       return;
     }
     state = state.copyWith(preparing: false, clearError: true);
-    _speaker.speak(id, text, flush: true);
+    // 长回复整段丢给外部语音，服务端常按上限截断（听感就是只读了开头）。
+    // 这里按句切开逐条排队：CompanionSpeaker 本来就会顺序播，切句还能让
+    // 第一句更快出声。
+    final lines = splitForSpeech(text);
+    if (lines.isEmpty) {
+      _current = null;
+      state = ReadAloudState.idle;
+      return;
+    }
+    _chunks = lines.length;
+    for (final (i, line) in lines.indexed) {
+      _speaker.speak(i == 0 ? id : '$id#$i', line, flush: i == 0);
+    }
   }
 
   Future<void> stop() async {
@@ -86,16 +101,26 @@ class ReadAloudController extends Notifier<ReadAloudState> {
     _speaker.stop();
   }
 
-  /// 播放结束（done/stopped/error 事件）就把状态收回，让按钮复位。
+  /// 播放结束就把状态收回，让按钮复位。
+  ///
+  /// 长文本按句切成 `id`、`id#1`、`id#2`…，只有**最后一块**播完才算读完；
+  /// 中间句子结束时不改状态，否则第一句说完按钮就复位了，后面的还在响。
   void _listen() {
     _events ??= _speaker.events.listen((event) {
-      if (event.id != _current) return;
+      final current = _current;
+      if (current == null) return;
+      final isBase = event.id == current;
+      final isChunk = event.id.startsWith('$current#');
+      if (!isBase && !isChunk) return;
       switch (event.type) {
         case CompanionVoiceEventType.done ||
             CompanionVoiceEventType.stopped ||
             CompanionVoiceEventType.error:
-          _current = null;
-          state = ReadAloudState.idle;
+          final index = isBase ? 0 : (int.tryParse(event.id.split('#').last) ?? 0);
+          if (index + 1 >= _chunks) {
+            _current = null;
+            state = ReadAloudState.idle;
+          }
         case CompanionVoiceEventType.start ||
             CompanionVoiceEventType.range ||
             CompanionVoiceEventType.fallback:
@@ -106,3 +131,58 @@ class ReadAloudController extends Notifier<ReadAloudState> {
 }
 
 final readAloudProvider = NotifierProvider<ReadAloudController, ReadAloudState>(ReadAloudController.new);
+
+/// 把一段回复切成适合逐条合成的片段。
+///
+/// 为什么切：整段丢给外部语音服务，长文常被服务端按上限截断；切句还能让
+/// 第一句更早出声。按句末标点切，再按 [maxChars] 合并，避免一句一个请求
+/// 把接口打得太碎。
+List<String> splitForSpeech(String text, {int maxChars = 240}) {
+  final clean = text.replaceAll(RegExp(r'\r\n?'), '\n').trim();
+  if (clean.isEmpty) return const [];
+
+  // 先按句末标点切开（保留标点）。
+  final sentences = <String>[];
+  final buffer = StringBuffer();
+  const ends = {'。', '！', '？', '!', '?', '…', '\n', '；', ';'};
+  for (final rune in clean.runes) {
+    final ch = String.fromCharCode(rune);
+    buffer.write(ch);
+    if (ends.contains(ch)) {
+      final piece = buffer.toString().trim();
+      if (piece.isNotEmpty) sentences.add(piece);
+      buffer.clear();
+    }
+  }
+  final tail = buffer.toString().trim();
+  if (tail.isNotEmpty) sentences.add(tail);
+
+  // 再按 maxChars 合并，过长的一句单独再切。
+  final out = <String>[];
+  final current = StringBuffer();
+  void flush() {
+    final piece = current.toString().trim();
+    if (piece.isNotEmpty) out.add(piece);
+    current.clear();
+  }
+
+  for (final s in sentences) {
+    if (s.length > maxChars) {
+      flush();
+      // 超长句按字数硬切，尽量在逗号处断开。
+      var rest = s;
+      while (rest.length > maxChars) {
+        var cut = rest.lastIndexOf(RegExp('[，,、]'), maxChars);
+        if (cut <= 0) cut = maxChars;
+        out.add(rest.substring(0, cut + 1).trim());
+        rest = rest.substring(cut + 1).trim();
+      }
+      if (rest.isNotEmpty) out.add(rest);
+      continue;
+    }
+    if (current.length + s.length > maxChars) flush();
+    current.write(s);
+  }
+  flush();
+  return out;
+}
