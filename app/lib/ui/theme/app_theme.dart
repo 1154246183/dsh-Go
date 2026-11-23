@@ -32,13 +32,14 @@ import 'typography.dart';
 ThemeData buildLightTheme({
   AppAccent accent = AppAccent.mist,
   bool glassBlur = true,
+  double glassOpacity = 0,
   Locale? glyphLocale,
   bool instantPages = false,
   bool fluid = false,
 }) => _build(
   DshPalette.lightScheme(accent),
   DshColors.forAccent(Brightness.light, accent),
-  DshSurfaces.light(accent, blurEnabled: glassBlur),
+  DshSurfaces.light(accent, blurEnabled: glassBlur).copyWith(glassOpacity: glassOpacity),
   accent,
   glyphLocale,
   instantPages,
@@ -49,13 +50,14 @@ ThemeData buildLightTheme({
 ThemeData buildDarkTheme({
   AppAccent accent = AppAccent.mist,
   bool glassBlur = true,
+  double glassOpacity = 0,
   Locale? glyphLocale,
   bool instantPages = false,
   bool fluid = false,
 }) => _build(
   DshPalette.darkScheme(accent),
   DshColors.forAccent(Brightness.dark, accent),
-  DshSurfaces.dark(accent, blurEnabled: glassBlur),
+  DshSurfaces.dark(accent, blurEnabled: glassBlur).copyWith(glassOpacity: glassOpacity),
   accent,
   glyphLocale,
   instantPages,
