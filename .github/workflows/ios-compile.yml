@@ -28,12 +28,10 @@ permissions:
   contents: write
 
 concurrency:
-  # 同时只留一个构建，但不要取消正在跑的那个：一次编译要二十多分钟，
-  # 中途掐掉等于白等。新来的排队，跑完的自然结束。
-  #
-  # 手动触发和 push 会各起一个 run，它们落在同一个组里，所以手动触发只在
-  # 队列为空时才需要（见下面 rebuild 脚本）。
-  group: ios-build-ipa-${{ github.ref }}
+  # 每次 run 自成一个组：踩过的坑是同一分支多次触发（push + 手动 dispatch
+  # 交替来）共用一个组时，新来的会把还排着队的那个顶成 cancelled，看起来
+  # 像构建失败。编译二十多分钟，宁可多跑一个也不要白等。
+  group: ios-build-ipa-${{ github.ref }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
