@@ -73,6 +73,7 @@ Widget settingsPage(SettingsPageId id, {String? sessionId}) => switch (id) {
   SettingsPageId.pluginInventory => const PluginInventoryPage(),
   SettingsPageId.plugins => const PluginsScreen(),
   SettingsPageId.githubBuild => const GitHubBuildAccountsPage(),
+  SettingsPageId.readAloud => const ReadAloudSettingsPage(),
   SettingsPageId.allFeatures => const AllFeaturesPage(),
   SettingsPageId.account => const AccountPage(),
   SettingsPageId.remote => const RemoteScreen(),
