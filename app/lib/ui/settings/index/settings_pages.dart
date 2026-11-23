@@ -36,6 +36,7 @@ import '../performance_page.dart';
 import '../personalization_page.dart';
 import '../privacy_page.dart';
 import '../reply_prefs_page.dart';
+import '../read_aloud_settings_page.dart';
 import '../settings_screen.dart';
 import '../system_access_page.dart';
 import '../voice_settings_page.dart';
