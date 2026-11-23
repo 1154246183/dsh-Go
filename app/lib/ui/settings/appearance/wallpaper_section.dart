@@ -182,6 +182,19 @@ class _WallpaperSectionState extends ConsumerState<WallpaperSection> {
                   unawaited(notifier.setTone(brightness, v));
                 },
               ),
+              WallpaperSliderRow(
+                key: const ValueKey('wallpaper-pop'),
+                // 文案写在这里而不是 arb：这台机器上无法确定壁纸那组键落在哪个
+                // parts 文件（目录列表接口间歇 401），硬编码至少不会漏键导致
+                // analyze 失败。其余行仍是本地化文案。
+                title: '壁纸亮度',
+                value: wallpaper?.pop ?? CustomWallpaper.defaultPop,
+                onChanged: (v) => setState(() => _draft = (_draft ?? stored)?.copyWith(pop: v)),
+                onChangeEnd: (v) {
+                  setState(() => _draft = null);
+                  unawaited(notifier.setPop(v));
+                },
+              ),
               SettingsTile(
                 key: const ValueKey('wallpaper-replace'),
                 title: l10n.wallpaperReplace,
