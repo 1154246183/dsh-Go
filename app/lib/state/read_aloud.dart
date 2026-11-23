@@ -137,7 +137,7 @@ final readAloudProvider = NotifierProvider<ReadAloudController, ReadAloudState>(
 /// 为什么切：整段丢给外部语音服务，长文常被服务端按上限截断；切句还能让
 /// 第一句更早出声。按句末标点切，再按 [maxChars] 合并，避免一句一个请求
 /// 把接口打得太碎。
-List<String> splitForSpeech(String text, {int maxChars = 240}) {
+List<String> splitForSpeech(String text, {int maxChars = 120}) {
   final clean = text.replaceAll(RegExp(r'\r\n?'), '\n').trim();
   if (clean.isEmpty) return const [];
 
