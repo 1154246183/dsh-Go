@@ -164,7 +164,7 @@ class WallpaperGalleryController extends AsyncNotifier<List<WallpaperShot>> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(randomKey, on);
     } catch (_) {}
-    if (on) await _shuffleIfRandom(state.value ?? const []);
+    if (on) await _shuffleIfRandom(state.value ?? const <WallpaperShot>[]);
   }
 
   Future<void> _shuffleIfRandom(List<WallpaperShot> shots) async {
@@ -189,7 +189,7 @@ class WallpaperGalleryController extends AsyncNotifier<List<WallpaperShot>> {
   Future<LaunchImportProblem?> addMany() async {
     final (shots, problem) = await ref.read(wallpaperImportProvider).pickMany();
     if (shots.isEmpty) return problem ?? LaunchImportProblem.unreadable;
-    final kept = [...(state.value ?? const []), ...shots];
+    final kept = [...(state.value ?? const <WallpaperShot>[]), ...shots];
     final capped = kept.length > WallpaperGallery.maxShots
         ? kept.sublist(kept.length - WallpaperGallery.maxShots)
         : kept;
@@ -205,7 +205,7 @@ class WallpaperGalleryController extends AsyncNotifier<List<WallpaperShot>> {
   Future<void> remove(WallpaperShot shot) async {
     final current = await _current;
     if (current != null && current.path == shot.path) return;
-    final next = [for (final s in (state.value ?? const [])) if (s != shot) s];
+    final next = [for (final s in (state.value ?? const <WallpaperShot>[])) if (s != shot) s];
     state = AsyncData(next);
     await WallpaperGallery.save(next);
     await WallpaperImport.removeFile(shot.path);
