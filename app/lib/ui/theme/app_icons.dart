@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart' show Icons;
+
 import 'dsh_glyphs.dart';
 
 /// 图标词汇:**Phosphor Regular**(1.5 描边、圆端、几何),选中 / 点亮 / 开启态用同一
@@ -367,10 +369,14 @@ abstract final class AppIcons {
   /// 伙伴小屋: her words read aloud (companion_voice.dart). Not the microphone: that is the person's voice.
   static const companionVoice = DshGlyphs.musicNote;
 
-  /// 对话里读这条回复: same mark as the companion's, since it is the same
-  /// voice reading (read_aloud.dart). Not the microphone — that is input.
-  /// 正在读时只换颜色，不换图形（一行图标里不出现两个相似的音符）。
-  static const readAloud = DshGlyphs.musicNote;
+  /// 对话里读这条回复。
+  ///
+  /// 用 Material 的喇叭而非 DshIcons：自建字形子集里没有喇叭（只有
+  /// megaphone/musicNote），补字形要重跑 tool/make_icon_font.py，那要
+  /// Phosphor 的 svg 源和 Python 工具链。这里直接取 Flutter 自带的
+  /// volume_up——`uses-material-design` 已开，字形随包走，不额外增体积。
+  static const readAloud = Icons.volume_up_outlined;
+  static const readAloudOn = Icons.volume_up;
 
   /// 「问 AI」: a question about the app for the agent (ui/common/ask_ai.dart).
   static const askAi = DshGlyphs.sparkle;
