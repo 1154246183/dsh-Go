@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show immutable;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../runtime/container_paths.dart';
@@ -242,4 +243,72 @@ class CustomWallpaper {
 
   @override
   int get hashCode => Object.hash(path, width, height, edge, zoom, alignX, alignY, blur, lighten, dim, pop, on);
+}
+
+/// 壁纸图库里的一张：只要渲染需要的三样，视觉参数（缩放、位置、模糊、
+/// 亮度）由「当前这张」那份 [CustomWallpaper] 统管，切图时不动。
+@immutable
+class WallpaperShot {
+  const WallpaperShot({required this.path, required this.width, required this.height, this.edge});
+
+  final String path;
+  final int width;
+  final int height;
+
+  /// 图边缘的平均色（ARGB），加载时先垫着。
+  final int? edge;
+
+  Map<String, Object?> toJson() => {'path': path, 'width': width, 'height': height, 'edge': ?edge};
+
+  static WallpaperShot? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final path = raw['path'];
+    final width = raw['width'];
+    final height = raw['height'];
+    if (path is! String || path.isEmpty || width is! int || height is! int || width <= 0 || height <= 0) return null;
+    final edge = raw['edge'];
+    return WallpaperShot(path: path, width: width, height: height, edge: edge is int ? edge : null);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is WallpaperShot && other.path == path && other.width == width && other.height == height && other.edge == edge;
+
+  @override
+  int get hashCode => Object.hash(path, width, height, edge);
+}
+
+/// 壁纸图库：多张图，随机显示从这里挑。存在自己的 prefs 键里，
+/// 与「当前这张」的 [CustomWallpaper] 分开——切图只换 path，不动调好的观感。
+abstract final class WallpaperGallery {
+  static const prefsKey = 'wallpaper_gallery';
+
+  /// 最多留这么多张：再多也翻不过来，还白占磁盘。
+  static const maxShots = 24;
+
+  static Future<List<WallpaperShot>> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(prefsKey);
+      if (raw == null) return const [];
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return [
+        for (final item in decoded)
+          if (WallpaperShot.fromJson(item) case final shot?) shot,
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> save(List<WallpaperShot> shots) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        prefsKey,
+        jsonEncode([for (final s in shots) s.toJson()]),
+      );
+    } catch (_) {}
+  }
 }
