@@ -177,7 +177,7 @@ class LaunchImport {
   Future<(List<CustomLaunch>, LaunchImportProblem?)> pickMany() async {
     final owner = _owner();
     try {
-      if (!await platform.supported()) return (const [], LaunchImportProblem.unavailable);
+      if (!await platform.supported()) return (<CustomLaunch>[], LaunchImportProblem.unavailable);
       final List<NativeSelectedFile> files;
       try {
         files = await platform.pick(
@@ -193,9 +193,9 @@ class LaunchImport {
           ),
         );
       } on PlatformException catch (e) {
-        return (const [], e.code == 'too-large' ? _over : LaunchImportProblem.unavailable);
+        return (<CustomLaunch>[], e.code == 'too-large' ? _over : LaunchImportProblem.unavailable);
       }
-      if (files.isEmpty) return (const [], LaunchImportProblem.cancelled);
+      if (files.isEmpty) return (<CustomLaunch>[], LaunchImportProblem.cancelled);
       final kept = <CustomLaunch>[];
       LaunchImportProblem? problem;
       for (final file in files) {
@@ -212,9 +212,9 @@ class LaunchImport {
       }
       return (kept, kept.isEmpty ? (problem ?? LaunchImportProblem.unreadable) : problem);
     } on PlatformException catch (e) {
-      return (const [], e.code == 'too-large' ? _over : LaunchImportProblem.unreadable);
+      return (<CustomLaunch>[], e.code == 'too-large' ? _over : LaunchImportProblem.unreadable);
     } catch (_) {
-      return (const [], LaunchImportProblem.unreadable);
+      return (<CustomLaunch>[], LaunchImportProblem.unreadable);
     } finally {
       unawaited(platform.cancel(owner));
     }
