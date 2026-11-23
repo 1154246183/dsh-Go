@@ -2,10 +2,14 @@
 // The menu every message opens (long-press, or ⋯ in a reply's row) is in
 // `message_menu.dart`.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/l10n.dart';
+import '../../../state/read_aloud.dart';
 import '../../common/bleed.dart';
 import '../../common/fluid_bits.dart';
 import '../../theme/app_icons.dart';
@@ -31,10 +35,11 @@ Future<void> copyMessage(BuildContext context, String text, {bool toast = true})
 /// conversation's last reply only) and ⋯ ([onMore]), which opens the same
 /// menu as a long-press (select, quote…). [trailing] (the turn footnote)
 /// sits at the row's right end.
-class ReplyActionRow extends StatefulWidget {
+class ReplyActionRow extends ConsumerStatefulWidget {
   const ReplyActionRow({
     super.key,
     required this.text,
+    this.readAloudId,
     this.onShare,
     this.onBranch,
     this.branching = false,
@@ -45,6 +50,9 @@ class ReplyActionRow extends StatefulWidget {
   });
 
   final String text;
+
+  /// 这条消息的稳定标识，用来判断「正在读的是不是它」。null 则不显示朗读键。
+  final String? readAloudId;
 
   /// 「分享」: the share panel for this reply.
   final VoidCallback? onShare;
@@ -64,10 +72,10 @@ class ReplyActionRow extends StatefulWidget {
   final Widget? trailing;
 
   @override
-  State<ReplyActionRow> createState() => _ReplyActionRowState();
+  ConsumerState<ReplyActionRow> createState() => _ReplyActionRowState();
 }
 
-class _ReplyActionRowState extends State<ReplyActionRow> {
+class _ReplyActionRowState extends ConsumerState<ReplyActionRow> {
   bool _copied = false;
 
   void _copy() {
@@ -77,6 +85,42 @@ class _ReplyActionRowState extends State<ReplyActionRow> {
       if (mounted) setState(() => _copied = false);
     });
   }
+
+  /// 朗读这一条：点开始读，正在读它的再点一次就是停。
+  /// 别的消息正在读时点这条，会先把那条掐掉（一次只有一条在响）。
+  Widget _readAloudKey(ButtonStyle style, Widget Function(Widget) swap, String id) {
+    final l10n = context.l10n;
+    final state = ref.watch(readAloudProvider);
+    final mine = state.speaks(id);
+    final busy = mine && state.preparing;
+    final colors = Theme.of(context).colorScheme;
+    final muted = DshColors.of(context).textTertiary;
+    return IconButton(
+      key: const ValueKey('reply-read-aloud'),
+      tooltip: mine ? l10n.commonReadAloudStop : l10n.commonReadAloud,
+      onPressed: busy ? null : () => unawaited(ref.read(readAloudProvider.notifier).toggle(id, widget.text)),
+      style: style.copyWith(foregroundColor: WidgetStatePropertyAll(mine ? colors.primary : muted)),
+      icon: swap(
+        busy
+            ? SizedBox.square(
+                key: const ValueKey('read-aloud-busy'),
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: muted),
+              )
+            : Icon(AppIcons.readAloud, key: const ValueKey('read-aloud')),
+      ),
+    );
+  }
+
+  /// Swaps in place: a check, a spinner, the speaker on.
+  Widget swap(Widget child) => AnimatedSwitcher(
+    duration: AppMotion.of(context, AppMotion.quick),
+    transitionBuilder: (child, animation) => FadeTransition(
+      opacity: animation,
+      child: ScaleTransition(scale: Tween(begin: 0.7, end: 1.0).animate(animation), child: child),
+    ),
+    child: child,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -94,14 +138,6 @@ class _ReplyActionRowState extends State<ReplyActionRow> {
       iconSize: 20,
     );
     // 图标原地换(对勾、转圈):淡入并从 0.7 放大。
-    Widget swap(Widget child) => AnimatedSwitcher(
-      duration: AppMotion.of(context, AppMotion.quick),
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: ScaleTransition(scale: Tween(begin: 0.7, end: 1.0).animate(animation), child: child),
-      ),
-      child: child,
-    );
     // 进行中:原地转圈,键不能再点。
     Widget busyKey(MessageAction action, VoidCallback onTap, bool busy) => IconButton(
       tooltip: action.label,
@@ -126,6 +162,7 @@ class _ReplyActionRowState extends State<ReplyActionRow> {
     final onBranch = widget.onBranch;
     final onRegenerate = widget.onRegenerate;
     final onMore = widget.onMore;
+    final readId = widget.readAloudId;
     final icons = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -151,6 +188,7 @@ class _ReplyActionRowState extends State<ReplyActionRow> {
             icon: const Icon(AppIcons.share),
           ),
         if (onBranch != null) busyKey(MessageAction.branch, onBranch, widget.branching),
+        if (readId != null) _readAloudKey(style, swap, readId),
         if (onRegenerate != null) busyKey(MessageAction.regenerate, onRegenerate, widget.regenerating),
         if (onMore != null)
           IconButton(tooltip: l10n.commonMore, onPressed: onMore, style: style, icon: const Icon(AppIcons.more)),
