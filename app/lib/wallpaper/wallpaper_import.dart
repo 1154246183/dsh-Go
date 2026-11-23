@@ -25,6 +25,8 @@ class WallpaperImport {
         maxBytes: CustomWallpaper.maxBytes,
         videos: false,
         action: 'wallpaper',
+        // 图库一次可以选多张；单张导入的那个入口只用得到第一张。
+        maxFiles: WallpaperGallery.maxShots,
       );
 
   final Future<Directory> Function() directory;
@@ -40,6 +42,17 @@ class WallpaperImport {
   Future<(CustomWallpaper?, LaunchImportProblem?)> pick({CustomWallpaper? previous}) async {
     final (launch, problem) = await _launch.pick();
     return _adopt(launch, problem, previous);
+  }
+
+  /// 一次选多张加进图库：只落地成 [WallpaperShot]，不碰当前这张的文件。
+  ///
+  /// 返回新收下的几张与第一个问题（全成功时为 null）。
+  Future<(List<WallpaperShot>, LaunchImportProblem?)> pickMany() async {
+    final (launches, problem) = await _launch.pickMany();
+    final shots = [
+      for (final l in launches) WallpaperShot(path: l.path, width: l.width, height: l.height, edge: l.edge),
+    ];
+    return (shots, shots.isEmpty ? (problem ?? LaunchImportProblem.unreadable) : problem);
   }
 
   /// Copies [bytes] into the wallpaper folder and checks them; [previous]'s file goes once the
