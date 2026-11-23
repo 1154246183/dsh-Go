@@ -33,6 +33,7 @@
   "hubTabSubagents": "子代理",
   "hubPlugins": "插件",
   "hubReadAloud": "语音朗读",
+  "hubReadAloudVoice": "声音",
   "hubReadAloudEnable": "允许朗读",
   "hubReadAloudEnableHint": "回复下方出现朗读键，点了用这里的声音读",
   "readAloudPreview": "试听",
