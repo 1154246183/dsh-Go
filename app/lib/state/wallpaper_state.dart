@@ -1,10 +1,13 @@
 // 设置 › 主题 › 壁纸: the user's own wallpaper (lib/wallpaper/custom_wallpaper.dart), whether it's
 // the one in use, and the picture baked for the screen it's on.
 
+import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:ui' show Brightness;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../performance/performance_state.dart';
 import '../wallpaper/custom_wallpaper.dart';
@@ -91,6 +94,16 @@ class CustomWallpaperController extends AsyncNotifier<CustomWallpaper?> {
     await _store(current.copyWith(pop: pop.clamp(0.0, 1.0)));
   }
 
+  /// 换成图库里的另一张：只换 path 与尺寸，缩放 / 位置 / 模糊 / 亮度
+  /// 这些观感沿用当前这份，切图不会把调好的样子打回默认。
+  Future<void> adopt(String path, int width, int height, int? edge) async {
+    final current = await _current;
+    final next = current == null
+        ? CustomWallpaper(path: path, width: width, height: height, edge: edge)
+        : current.replacedBy(path: path, width: width, height: height, edge: edge);
+    await _store(next.copyWith(on: true));
+  }
+
   Future<void> _store(CustomWallpaper wallpaper) async {
     state = AsyncData(wallpaper);
     await CustomWallpaper.save(wallpaper);
@@ -116,3 +129,89 @@ final wallpaperImageProvider = FutureProvider.autoDispose.family<ui.Image?, Wall
   if (image != null) ref.onDispose(image.dispose);
   return image;
 });
+
+/// 壁纸图库：多张图 + 「随机显示」开关。
+///
+/// 随机只在**冷启动**生效（[bootstrapShuffle]），不在切回前台时换——切出去
+/// 再回来换一张会打断阅读。切图只换 path 与尺寸，缩放 / 位置 / 模糊 /
+/// 亮度这些调好的观感留在 [CustomWallpaper] 上不动。
+class WallpaperGalleryController extends AsyncNotifier<List<WallpaperShot>> {
+  static const randomKey = 'wallpaper_random';
+
+  @override
+  Future<List<WallpaperShot>> build() async {
+    final shots = await WallpaperGallery.load();
+    await loadRandom();
+    // 冷启动时若是「随机显示」，就从图库里挑一张当当前壁纸。
+    unawaited(_shuffleIfRandom(shots));
+    return shots;
+  }
+
+  bool _random = false;
+  bool get random => _random;
+
+  /// 读一次开关（App 起得比 prefs 快时由 UI 补调）。
+  Future<void> loadRandom() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _random = prefs.getBool(randomKey) ?? false;
+    } catch (_) {}
+  }
+
+  Future<void> setRandom(bool on) async {
+    _random = on;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(randomKey, on);
+    } catch (_) {}
+    if (on) await _shuffleIfRandom(state.value ?? const []);
+  }
+
+  Future<void> _shuffleIfRandom(List<WallpaperShot> shots) async {
+    if (!_random || shots.length < 2) return;
+    final pick = shots[math.Random().nextInt(shots.length)];
+    final current = await _current;
+    if (current == null || current.path == pick.path) return;
+    await ref
+        .read(customWallpaperProvider.notifier)
+        .adopt(pick.path, pick.width, pick.height, pick.edge);
+  }
+
+  Future<CustomWallpaper?> get _current async {
+    try {
+      return await ref.read(customWallpaperProvider.future);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 多选导入，追加到图库（不删已有文件）。
+  Future<LaunchImportProblem?> addMany() async {
+    final (shots, problem) = await ref.read(wallpaperImportProvider).pickMany();
+    if (shots.isEmpty) return problem ?? LaunchImportProblem.unreadable;
+    final kept = [...(state.value ?? const []), ...shots];
+    final capped = kept.length > WallpaperGallery.maxShots
+        ? kept.sublist(kept.length - WallpaperGallery.maxShots)
+        : kept;
+    state = AsyncData(capped);
+    await WallpaperGallery.save(capped);
+    // 第一张顺手设为当前壁纸，导完就能看到。
+    final first = shots.first;
+    await ref.read(customWallpaperProvider.notifier).adopt(first.path, first.width, first.height, first.edge);
+    return problem;
+  }
+
+  /// 删掉图库里的一张（同时删文件）。正在用的那张不在此列：先切走。
+  Future<void> remove(WallpaperShot shot) async {
+    final current = await _current;
+    if (current != null && current.path == shot.path) return;
+    final next = [for (final s in (state.value ?? const [])) if (s != shot) s];
+    state = AsyncData(next);
+    await WallpaperGallery.save(next);
+    await WallpaperImport.removeFile(shot.path);
+  }
+}
+
+final wallpaperGalleryProvider = AsyncNotifierProvider<WallpaperGalleryController, List<WallpaperShot>>(
+  WallpaperGalleryController.new,
+);
