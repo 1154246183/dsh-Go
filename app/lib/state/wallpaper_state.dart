@@ -84,6 +84,13 @@ class CustomWallpaperController extends AsyncNotifier<CustomWallpaper?> {
     await _store(current.withTone(brightness, tone.clamp(0.0, 1.0)));
   }
 
+  /// 「壁纸亮度」：把自动遮罩按比例退掉多少（0 保持可读性保护，1 全退）。
+  Future<void> setPop(double pop) async {
+    final current = await _current;
+    if (current == null || current.pop == pop) return;
+    await _store(current.copyWith(pop: pop.clamp(0.0, 1.0)));
+  }
+
   Future<void> _store(CustomWallpaper wallpaper) async {
     state = AsyncData(wallpaper);
     await CustomWallpaper.save(wallpaper);
