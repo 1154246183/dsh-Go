@@ -34,6 +34,7 @@ import '../../../wallpaper/wallpaper_render.dart';
 import '../../common/brief_notice.dart';
 import '../../common/expand_reveal.dart';
 import '../../common/pressable.dart';
+import '../../../state/settings_state.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
 import '../../wallpaper/wallpaper_backdrop.dart';
@@ -194,6 +195,15 @@ class _WallpaperSectionState extends ConsumerState<WallpaperSection> {
                   setState(() => _draft = null);
                   unawaited(notifier.setPop(v));
                 },
+              ),
+              // 卡片 / 气泡的不透明度：壁纸越亮，字越容易被背景吃掉；
+              // 往右拉让玻璃更实，字更稳。全局生效（所有 GlassSurface）。
+              WallpaperSliderRow(
+                key: const ValueKey('wallpaper-glass'),
+                title: '卡片不透明度',
+                value: ref.watch(settingsProvider.select((s) => s.glassOpacity)),
+                onChanged: (v) => unawaited(ref.read(settingsProvider.notifier).setGlassOpacity(v)),
+                onChangeEnd: (_) {},
               ),
               SettingsTile(
                 key: const ValueKey('wallpaper-replace'),
