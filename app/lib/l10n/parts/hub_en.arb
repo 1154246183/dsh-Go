@@ -33,6 +33,7 @@
   "hubTabSubagents": "Subagents",
   "hubPlugins": "Plugins",
   "hubReadAloud": "Read aloud",
+  "hubReadAloudVoice": "Voice",
   "hubReadAloudEnable": "Allow reading aloud",
   "hubReadAloudEnableHint": "A read key appears under replies; it reads with this voice",
   "readAloudPreview": "Preview",
