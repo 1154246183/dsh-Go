@@ -11,6 +11,8 @@
   "commonDelete": "Delete",
   "commonInstall": "Install",
   "commonShare": "Share",
+  "commonReadAloud": "Read aloud",
+  "commonReadAloudStop": "Stop reading",
   "commonAdd": "Add",
   "commonEdit": "Edit",
   "commonClear": "Clear",
