@@ -19,6 +19,7 @@
 // the app is baked again once the slider is let go.
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -206,6 +207,7 @@ class _WallpaperSectionState extends ConsumerState<WallpaperSection> {
                 onChangeEnd: (_) {},
               ),
               const ChatBackdropSection(),
+              const WallpaperGallerySection(),
               SettingsTile(
                 key: const ValueKey('wallpaper-replace'),
                 title: l10n.wallpaperReplace,
@@ -725,6 +727,97 @@ class ChatBackdropSection extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 壁纸图库：多张图、一次选多张、随机显示开关。
+///
+/// 随机在**冷启动**时生效——切出去再回来不换图，免得打断阅读。
+/// 缩略图点一下即切过去，长按删除（正在用的那张不给删）。
+class WallpaperGallerySection extends ConsumerWidget {
+  const WallpaperGallerySection({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final shots = ref.watch(wallpaperGalleryProvider).value ?? const <WallpaperShot>[];
+    final notifier = ref.read(wallpaperGalleryProvider.notifier);
+    final current = ref.watch(customWallpaperProvider).value;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 2,
+      children: [
+        SettingsTile(
+          key: const ValueKey('wallpaper-add-many'),
+          icon: AppIcons.gallery,
+          title: '添加多张',
+          subtitle: shots.isEmpty ? '从相册一次选几张，之后可随机切换' : '已有 ${shots.length} 张',
+          onTap: () => unawaited(notifier.addMany()),
+        ),
+        SettingsSwitchTile(
+          key: const ValueKey('wallpaper-random'),
+          icon: AppIcons.swap,
+          title: '随机显示',
+          subtitle: '每次打开 App 从这几张里随机挑一张',
+          value: notifier.random,
+          onChanged: shots.length < 2 ? null : (v) => unawaited(notifier.setRandom(v)),
+        ),
+        if (shots.length > 1)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(SettingsMetrics.inset, 8, SettingsMetrics.inset, 8),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final shot in shots)
+                  _GalleryThumb(
+                    shot: shot,
+                    active: current?.path == shot.path,
+                    onTap: () => unawaited(
+                      ref.read(customWallpaperProvider.notifier).adopt(shot.path, shot.width, shot.height, shot.edge),
+                    ),
+                    onRemove: () => unawaited(notifier.remove(shot)),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _GalleryThumb extends StatelessWidget {
+  const _GalleryThumb({required this.shot, required this.active, required this.onTap, required this.onRemove});
+
+  final WallpaperShot shot;
+  final bool active;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  static const side = 64.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: active ? null : onRemove,
+      child: Container(
+        width: side,
+        height: side * 1.6,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active ? scheme.primary : scheme.outlineVariant,
+            width: active ? 2 : 1,
+          ),
+          image: DecorationImage(
+            image: FileImage(File(shot.path)),
+            fit: BoxFit.cover,
+          ),
+        ),
+      ),
     );
   }
 }
