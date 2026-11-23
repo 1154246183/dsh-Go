@@ -96,6 +96,7 @@ class LaunchImport {
     this.maxBytes = CustomLaunch.maxVideoBytes,
     this.videos = true,
     this.action = 'launch',
+    this.maxFiles = 1,
   }) : platform = platform ?? MethodNativeFilePlatform(),
        probeClip = probeClip ?? _probeClip,
        directory = directory ?? launchDirectory,
@@ -125,6 +126,9 @@ class LaunchImport {
   /// The picker request's name.
   final String action;
 
+  /// 一次能选几张。壁纸图库要一次导入多张，其余（启动画面）只选一张。
+  final int maxFiles;
+
   /// `<app support>/launch`: the app's own storage, not backed up, not visible to other apps.
   static Future<Directory> launchDirectory() async {
     final base = await getApplicationSupportDirectory();
@@ -144,7 +148,7 @@ class LaunchImport {
             action: action,
             images: true,
             visual: videos,
-            maxFiles: 1,
+            maxFiles: maxFiles,
             own: true,
             maxBytes: maxBytes,
             maxTotalBytes: maxBytes,
@@ -161,6 +165,56 @@ class LaunchImport {
       return (null, e.code == 'too-large' ? _over : LaunchImportProblem.unreadable);
     } catch (_) {
       return (null, LaunchImportProblem.unreadable);
+    } finally {
+      unawaited(platform.cancel(owner));
+    }
+  }
+
+  /// 一次选多张（壁纸图库用），每张都按 [keep] 的规矩落地；不删任何旧文件。
+  ///
+  /// 返回成功的那几张与第一个问题（全成功时为 null）。中途某张超限不会
+  /// 打消整批：能用的先收下，问题照实回报。
+  Future<(List<CustomLaunch>, LaunchImportProblem?)> pickMany() async {
+    final owner = _owner();
+    try {
+      if (!await platform.supported()) return (const [], LaunchImportProblem.unavailable);
+      final List<NativeSelectedFile> files;
+      try {
+        files = await platform.pick(
+          PickFileEffect(
+            request: owner,
+            action: action,
+            images: true,
+            visual: videos,
+            maxFiles: maxFiles,
+            own: true,
+            maxBytes: maxBytes,
+            maxTotalBytes: maxBytes * maxFiles,
+          ),
+        );
+      } on PlatformException catch (e) {
+        return (const [], e.code == 'too-large' ? _over : LaunchImportProblem.unavailable);
+      }
+      if (files.isEmpty) return (const [], LaunchImportProblem.cancelled);
+      final kept = <CustomLaunch>[];
+      LaunchImportProblem? problem;
+      for (final file in files) {
+        if ((file.length ?? 0) > maxBytes) {
+          problem ??= _over;
+          continue;
+        }
+        final (launch, why) = await keep(file.openRead());
+        if (launch != null) {
+          kept.add(launch);
+        } else {
+          problem ??= why ?? LaunchImportProblem.unreadable;
+        }
+      }
+      return (kept, kept.isEmpty ? (problem ?? LaunchImportProblem.unreadable) : problem);
+    } on PlatformException catch (e) {
+      return (const [], e.code == 'too-large' ? _over : LaunchImportProblem.unreadable);
+    } catch (_) {
+      return (const [], LaunchImportProblem.unreadable);
     } finally {
       unawaited(platform.cancel(owner));
     }
