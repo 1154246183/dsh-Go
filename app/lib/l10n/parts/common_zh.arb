@@ -11,6 +11,8 @@
   "commonDelete": "删除",
   "commonInstall": "安装",
   "commonShare": "分享",
+  "commonReadAloud": "朗读",
+  "commonReadAloudStop": "停止朗读",
   "commonAdd": "添加",
   "commonEdit": "编辑",
   "commonClear": "清除",
