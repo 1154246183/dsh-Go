@@ -25,6 +25,7 @@ class CustomWallpaper {
     this.blur = defaultBlur,
     this.lighten = defaultLighten,
     this.dim = defaultDim,
+    this.pop = defaultPop,
     this.on = true,
   });
 
@@ -37,6 +38,7 @@ class CustomWallpaper {
   static const defaultBlur = 0.3;
   static const defaultLighten = 0.2;
   static const defaultDim = 0.2;
+  static const defaultPop = 0.0;
 
   static const prefsKey = 'wallpaper_custom';
 
@@ -64,6 +66,14 @@ class CustomWallpaper {
   /// mode ([dim]). Text keeps its contrast whatever these say ([WallpaperLook]).
   final double lighten;
   final double dim;
+
+  /// 0–1: 把自动遮罩按比例退掉多少，让壁纸本身更亮更清楚。
+  ///
+  /// 自动遮罩是为了让文字达到 4.6:1 对比度、按像素算出来的；偏亮、花纹多的
+  /// 图会被压得很重，即使「压暗」是 0%（wallpaper_look.dart 的 bound）。
+  /// 这一项不解那套计算，只在合成时把遮罩按比例让开，由人自己决定要不要
+  /// 牺牲一点对比度换壁纸的可见度。1 = 遮罩全退。
+  final double pop;
 
   /// In use. Off: the default backdrop, with this one kept to switch back to.
   final bool on;
@@ -99,6 +109,7 @@ class CustomWallpaper {
     double? blur,
     double? lighten,
     double? dim,
+    double? pop,
     bool? on,
   }) => CustomWallpaper(
     path: path,
@@ -111,6 +122,7 @@ class CustomWallpaper {
     blur: blur ?? this.blur,
     lighten: lighten ?? this.lighten,
     dim: dim ?? this.dim,
+    pop: pop ?? this.pop,
     on: on ?? this.on,
   );
 
@@ -120,7 +132,16 @@ class CustomWallpaper {
 
   /// A new picture in place of this one: how it sits starts over, the look is kept.
   CustomWallpaper replacedBy({required String path, required int width, required int height, int? edge}) =>
-      CustomWallpaper(path: path, width: width, height: height, edge: edge, blur: blur, lighten: lighten, dim: dim);
+      CustomWallpaper(
+        path: path,
+        width: width,
+        height: height,
+        edge: edge,
+        blur: blur,
+        lighten: lighten,
+        dim: dim,
+        pop: pop,
+      );
 
   Map<String, Object?> toJson() => {
     'path': path,
@@ -133,6 +154,7 @@ class CustomWallpaper {
     'blur': blur,
     'lighten': lighten,
     'dim': dim,
+    'pop': pop,
     'on': on,
   };
 
@@ -158,6 +180,7 @@ class CustomWallpaper {
       blur: unit(raw['blur'], defaultBlur),
       lighten: unit(raw['lighten'], defaultLighten),
       dim: unit(raw['dim'], defaultDim),
+      pop: unit(raw['pop'], defaultPop),
       on: raw['on'] != false,
     );
   }
@@ -214,8 +237,9 @@ class CustomWallpaper {
       other.blur == blur &&
       other.lighten == lighten &&
       other.dim == dim &&
+      other.pop == pop &&
       other.on == on;
 
   @override
-  int get hashCode => Object.hash(path, width, height, edge, zoom, alignX, alignY, blur, lighten, dim, on);
+  int get hashCode => Object.hash(path, width, height, edge, zoom, alignX, alignY, blur, lighten, dim, pop, on);
 }
