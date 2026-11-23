@@ -34,7 +34,6 @@ import '../../state/hosts_state.dart' show HostKind, activeHostProvider;
 import '../../state/media_generation.dart';
 import '../../state/mention_state.dart';
 import '../../state/models_state.dart';
-import '../../state/session_search.dart' show folderLabel;
 import '../../state/safe_mode_state.dart';
 import '../../state/session_modes.dart';
 import '../../state/sessions_state.dart';
@@ -1694,15 +1693,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                         scrolledUnder: sessionId == null ? null : _scrolledUnder,
                         title: title,
                         status: status,
-                        detail: !narrow || isChild
-                            ? null
-                            : folderLabel(
-                                ref.watch(
-                                  sessionsProvider.select(
-                                    (s) => s.value?.where((session) => session.sessionId == sessionId).firstOrNull?.cwd,
-                                  ),
-                                ),
-                              ),
+                        // 标题下那行只留状态：之前窄屏会拼上工作目录名
+                        // （通常是 workspace 这种英文路径尾），要去掉。
+                        detail: null,
                         onOpenDrawer: widget.onOpenDrawer,
                         onOpenQuickPanel: widget.onOpenQuickPanel,
                         onNewChat: sessionId == null || isChild
