@@ -113,6 +113,7 @@ class DshSurfaces extends ThemeExtension<DshSurfaces> {
     required this.pill,
     this.accent = AppAccent.mist,
     this.blurEnabled = true,
+    this.glassOpacity = 1,
   });
 
   /// 页面竖向渐变的顶 / 底。
@@ -145,14 +146,29 @@ class DshSurfaces extends ThemeExtension<DshSurfaces> {
   /// `BackdropFilter`。由设置里的"减少透明效果"或性能探测决定。
   final bool blurEnabled;
 
+  /// 玻璃的不透明度倍率，0–1（1 = 原样）。
+  ///
+  /// 壁纸调亮以后，暗色主题下 card/pill 的填充只有 white@5–6%，背景一透过
+  /// 来字就糊了。这个倍率把各层 fill 的 alpha 往上抬（只抬不降），让人在
+  /// 壁纸设置里自己找平衡：越大越不透明，字越稳，壁纸越不明显。
+  final double glassOpacity;
+
   static DshSurfaces of(BuildContext context) => Theme.of(context).extension<DshSurfaces>()!;
 
-  GlassStyle glass(GlassTier tier) => switch (tier) {
-    GlassTier.chrome => chrome,
-    GlassTier.sheet => sheet,
-    GlassTier.card => card,
-    GlassTier.pill => pill,
-  };
+  GlassStyle glass(GlassTier tier) {
+    final base = switch (tier) {
+      GlassTier.chrome => chrome,
+      GlassTier.sheet => sheet,
+      GlassTier.card => card,
+      GlassTier.pill => pill,
+    };
+    if (glassOpacity >= 1) return base;
+    // 把 fill / fallbackFill 的 alpha 往 1 抬：[glassOpacity] 是「还要加多少」，
+    // 0 保持原样，1 完全不透明。
+    Color denser(Color c) =>
+        c.withValues(alpha: (c.a + (1 - c.a) * glassOpacity).clamp(0.0, 1.0));
+    return base.copyWith(fill: denser(base.fill), fallbackFill: denser(base.fallbackFill));
+  }
 
   /// 浅色:晨雾渐变 + 白玻璃。渐变、阴影、实色兜底跟配色的中性色走;
   /// 玻璃本身是白的,高光也是白的 —— 换了配色,玻璃还是玻璃。
@@ -274,6 +290,7 @@ class DshSurfaces extends ThemeExtension<DshSurfaces> {
     GlassStyle? pill,
     AppAccent? accent,
     bool? blurEnabled,
+    double? glassOpacity,
   }) {
     return DshSurfaces(
       backdropTop: backdropTop ?? this.backdropTop,
@@ -289,6 +306,7 @@ class DshSurfaces extends ThemeExtension<DshSurfaces> {
       pill: pill ?? this.pill,
       accent: accent ?? this.accent,
       blurEnabled: blurEnabled ?? this.blurEnabled,
+      glassOpacity: glassOpacity ?? this.glassOpacity,
     );
   }
 
@@ -310,6 +328,7 @@ class DshSurfaces extends ThemeExtension<DshSurfaces> {
       pill: GlassStyle.lerp(pill, other.pill, t),
       accent: t < 0.5 ? accent : other.accent,
       blurEnabled: t < 0.5 ? blurEnabled : other.blurEnabled,
+      glassOpacity: lerpDouble(glassOpacity, other.glassOpacity, t)!,
     );
   }
 }
