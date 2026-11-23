@@ -4,7 +4,9 @@ import 'dart:async';
 
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../companion/companion_voice_source.dart';
 import '../../../l10n/l10n.dart';
 import '../../common/expand_reveal.dart';
 import '../../common/fluid_bits.dart';
@@ -41,7 +43,7 @@ const _firstTextIn = Duration(milliseconds: 200);
 /// ⇪ 和菜单里的「分享」打开同一个分享面板。长按或 ⋯:同一个消息菜单(复制 /
 /// 选择文字 / 引用 / 分享 / 重新回答 / 从这里分叉)。正文因此不再直接长按选字,选字走菜单里的
 /// "选择文字",选中一段还能「引用」(Claude 式)。
-class AssistantMessage extends StatefulWidget {
+class AssistantMessage extends ConsumerStatefulWidget {
   const AssistantMessage({
     super.key,
     required this.item,
@@ -78,10 +80,10 @@ class AssistantMessage extends StatefulWidget {
   final Widget? footnote;
 
   @override
-  State<AssistantMessage> createState() => _AssistantMessageState();
+  ConsumerState<AssistantMessage> createState() => _AssistantMessageState();
 }
 
-class _AssistantMessageState extends State<AssistantMessage> {
+class _AssistantMessageState extends ConsumerState<AssistantMessage> {
   Widget? _body;
   String? _bodyText;
   bool? _bodyStreaming;
@@ -181,6 +183,8 @@ class _AssistantMessageState extends State<AssistantMessage> {
     }
 
     final actions = widget.showActions && !streaming && text.isNotEmpty;
+    // 「允许朗读」关掉时，操作行里不出现朗读键。
+    final readAloud = ref.watch(companionVoiceSettingsProvider.select((s) => s?.on ?? false));
     final reply = HoldLift(
       behavior: HitTestBehavior.opaque,
       // 长按选字，不弹菜单（菜单走下方「···」）。
@@ -211,6 +215,9 @@ class _AssistantMessageState extends State<AssistantMessage> {
                     // Copy / share carry a one-line summary of each visual
                     // reply, never its raw JSON.
                     text: dshUiPlainText(text),
+                    // 同一个 item 实例在重建中稳定，足够分辨"正在读的是不是这条"。
+                    // 「允许朗读」关掉时不给键，行里就少一个图标。
+                    readAloudId: readAloud ? 'reply-${identityHashCode(widget.item)}' : null,
                     onBranch: widget.onBranch,
                     branching: widget.branching,
                     onShare: () => shareReply(context, widget.item),
