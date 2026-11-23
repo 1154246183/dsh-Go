@@ -71,6 +71,7 @@ enum SettingsPageId {
   media,
   plugins,
   githubBuild,
+  readAloud,
   appearance,
   pets,
   interface,
@@ -439,6 +440,15 @@ final _pages = <SettingsPageMeta>[
     keywords: (l) => l.githubBuildTitle,
     freq: Freq.low,
     links: const ['github-build', 'github'],
+  ),
+  // 朗读对话：把伙伴小屋那套语音（本机 / 多家 API / 任意 HTTP）用到全局。
+  SettingsPageMeta(
+    SettingsPageId.readAloud,
+    title: (l) => l.hubReadAloud,
+    group: _abilities,
+    keywords: (l) => l.hubReadAloud,
+    freq: Freq.medium,
+    links: const ['read-aloud', 'tts', 'voice'],
   ),
   // 外观
   SettingsPageMeta(
