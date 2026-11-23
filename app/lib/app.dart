@@ -39,6 +39,7 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
   AppAccent? _accent;
   bool? _english;
   bool? _glassBlur;
+  double _glassOpacity = 0;
   bool? _instantPages;
   bool? _fluid;
   late ThemeData _light;
@@ -96,10 +97,18 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
   @override
   void didChangeAccessibilityFeatures() => setState(() {});
 
-  void _themesFor(AppAccent accent, bool english, bool glassBlur, bool instantPages, bool fluid) {
+  void _themesFor(
+    AppAccent accent,
+    bool english,
+    bool glassBlur,
+    double glassOpacity,
+    bool instantPages,
+    bool fluid,
+  ) {
     if (accent == _accent &&
         english == _english &&
         glassBlur == _glassBlur &&
+        glassOpacity == _glassOpacity &&
         instantPages == _instantPages &&
         fluid == _fluid) {
       return;
@@ -107,6 +116,7 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
     _accent = accent;
     _english = english;
     _glassBlur = glassBlur;
+    _glassOpacity = glassOpacity;
     _instantPages = instantPages;
     _fluid = fluid;
     // Plugin views that ask for `accent: "app"` follow the palette.
@@ -117,6 +127,7 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
       accent: accent,
       glyphLocale: glyphs,
       glassBlur: glassBlur,
+      glassOpacity: glassOpacity,
       instantPages: instantPages,
       fluid: fluid,
     );
@@ -124,6 +135,7 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
       accent: accent,
       glyphLocale: glyphs,
       glassBlur: glassBlur,
+      glassOpacity: glassOpacity,
       instantPages: instantPages,
       fluid: fluid,
     );
@@ -169,7 +181,14 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
         performance.reduceMotion || WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     final fluid = performance.fluidMotion && !reduced;
     FrameClock.instance.enabled = fluid;
-    _themesFor(ref.watch(accentProvider), locale.languageCode == 'en', performance.blur, reduced, fluid);
+    _themesFor(
+      ref.watch(accentProvider),
+      locale.languageCode == 'en',
+      performance.blur,
+      ref.watch(settingsProvider.select((s) => s.glassOpacity)),
+      reduced,
+      fluid,
+    );
     if (!waiting && !_settled) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _settled = true);
     }
