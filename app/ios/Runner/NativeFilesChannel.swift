@@ -119,6 +119,25 @@ private struct NativeFileFailure: Error {
   let code: String
 }
 
+/// 记住哪些下标已经交付过，保证每个 `group.enter()` 只配一次 leave。
+///
+/// iOS 15 的 `loadFileRepresentation` 回调可能重复触发；不挡住重复的，
+/// libdispatch 会因为 leave 多了而 SIGTRAP。锁是必须的：回调来自各自
+/// 不同的后台队列。
+private final class LoadedOnce {
+  private let lock = NSLock()
+  private var claimed = Set<Int>()
+
+  /// 第一次见到 [index] 返回 true，之后都返回 false。
+  func claim(_ index: Int) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    if claimed.contains(index) { return false }
+    claimed.insert(index)
+    return true
+  }
+}
+
 /// What the picker's callbacks gather, on whatever queue each one comes.
 private final class PhotoCopies {
   private let lock = NSLock()
@@ -320,18 +339,27 @@ final class NativeFilesChannel: NSObject, PHPickerViewControllerDelegate, UIDocu
   }
 
   /// Each load's callback has to copy before it returns.
+  ///
+  /// iOS 15 的 `loadFileRepresentation` 回调可能被调用不止一次（一次成功、
+  /// 之后再来一次失败，或系统重试），而每个 `group.enter()` 只能配一次
+  /// `group.leave()`——多出来的 leave 会让 libdispatch 在 Thread 4 直接
+  /// SIGTRAP（"Unbalanced call to dispatch_group_leave"），也就是选图/选壁纸
+  /// 时闪退。这里用 [once] 记住哪些下标已经交付过，重复回调直接忽略。
   private func copyPhotos(_ results: [PHPickerResult], for picked: FileSelection) {
     let folder = Self.copiesRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
     picked.folder = folder
     let budget = picked.budget
     let copies = PhotoCopies()
     let group = DispatchGroup()
+    let once = LoadedOnce()
     for (index, result) in results.enumerated() {
       let provider = result.itemProvider
       let name = provider.suggestedName
       let kind = provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) ? UTType.image : UTType.movie
       group.enter()
       let load = provider.loadFileRepresentation(forTypeIdentifier: kind.identifier) { url, _ in
+        // 同一个下标只认第一次回调；后面重复的既不再复制，也不再 leave。
+        guard once.claim(index) else { return }
         defer { group.leave() }
         guard let url else { return }
         do {
