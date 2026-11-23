@@ -164,10 +164,14 @@ class WallpaperRenderer {
         veilBottom: _rgb(look.veilBottom),
         lift: look.lift,
         user: w.toneFor(look.brightness).clamp(0.0, 1.0) * WallpaperBake.maxTone,
+        pop: w.pop.clamp(0.0, 1.0),
       );
       // Large bakes measure off the UI thread.
       final alpha = outW * outH > 1 << 17 ? await compute(veilAlpha, request) : veilAlpha(request);
-      final mask = await _maskImage(alpha, request.cols, request.rows);
+      // 「壁纸亮度」：把算出来的遮罩按比例让开。0 保持原来的可读性保护，
+      // 越大壁纸越显眼（文字对比度也越低，由人自己取舍）。
+      final veil = w.pop <= 0 ? alpha : _weaken(alpha, w.pop);
+      final mask = await _maskImage(veil, request.cols, request.rows);
       try {
         return await _compose(soft, mask, request, look);
       } finally {
@@ -357,6 +361,9 @@ class VeilRequest {
   /// The tone slider's own amount, 0–1.
   final double user;
 
+  /// 「壁纸亮度」：把自动遮罩按比例退掉多少，0–1（1 = 全退，壁纸原样）。
+  final double pop;
+
   /// White laid over the result by the lightest surface text sits on ([WallpaperLook.lift]).
   final double lift;
   final int spread;
@@ -437,6 +444,16 @@ Uint8List veilAlpha(VeilRequest r) {
   final out = Uint8List(n);
   for (var i = 0; i < n; i++) {
     out[i] = (math.max(need[i], r.user) * 255).ceil().clamp(0, 255);
+  }
+  return out;
+}
+
+/// 按 [pop]（0–1）把遮罩的每个字节往小拉：0 原样，1 全透明。
+Uint8List _weaken(Uint8List alpha, double pop) {
+  final keep = (1 - pop).clamp(0.0, 1.0);
+  final out = Uint8List(alpha.length);
+  for (var i = 0; i < alpha.length; i++) {
+    out[i] = (alpha[i] * keep).round();
   }
   return out;
 }
