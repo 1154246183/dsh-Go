@@ -44,6 +44,10 @@ class AppSettings {
     this.visualReplies = true,
     this.allowLandscape = true,
     this.glassOpacity = 0,
+    this.chatBackdrop = false,
+    this.chatBackdropHue = 250,
+    this.chatBackdropAlpha = 0.5,
+    this.chatBackdropRadius = 16,
     this.customProviderIds = const {},
     this.loaded = false,
   });
@@ -105,6 +109,18 @@ class AppSettings {
   /// 这个值由「壁纸 › 卡片不透明度」调，越大字越稳、壁纸越不明显。
   final double glassOpacity;
 
+  /// 聊天里给回答正文垫一层背景框：壁纸透过来时字才站得住。
+  final bool chatBackdrop;
+
+  /// 背景框的色相（0–360，OKLCH 的 h）。
+  final double chatBackdropHue;
+
+  /// 背景框的不透明度（0–1）。
+  final double chatBackdropAlpha;
+
+  /// 背景框的圆角（dp）。
+  final double chatBackdropRadius;
+
   /// Custom providers created on the local engine whose key is kept on the
   /// phone ([ProviderKeyVault]). Known at launch, before the engine runs, so
   /// the first-run gate can tell "has a model to talk to" without it.
@@ -131,6 +147,10 @@ class AppSettings {
     bool? visualReplies,
     bool? allowLandscape,
     double? glassOpacity,
+    bool? chatBackdrop,
+    double? chatBackdropHue,
+    double? chatBackdropAlpha,
+    double? chatBackdropRadius,
     Set<String>? customProviderIds,
     bool? loaded,
   }) => AppSettings(
@@ -148,6 +168,10 @@ class AppSettings {
     visualReplies: visualReplies ?? this.visualReplies,
     allowLandscape: allowLandscape ?? this.allowLandscape,
     glassOpacity: glassOpacity ?? this.glassOpacity,
+    chatBackdrop: chatBackdrop ?? this.chatBackdrop,
+    chatBackdropHue: chatBackdropHue ?? this.chatBackdropHue,
+    chatBackdropAlpha: chatBackdropAlpha ?? this.chatBackdropAlpha,
+    chatBackdropRadius: chatBackdropRadius ?? this.chatBackdropRadius,
     customProviderIds: customProviderIds ?? this.customProviderIds,
     loaded: loaded ?? this.loaded,
   );
@@ -177,6 +201,10 @@ class SettingsController extends Notifier<AppSettings> {
   static const _visualRepliesKey = 'visual_replies';
   static const _allowLandscapeKey = 'allow_landscape';
   static const _glassOpacityKey = 'glass_opacity';
+  static const _chatBackdropKey = 'chat_backdrop';
+  static const _chatBackdropHueKey = 'chat_backdrop_hue';
+  static const _chatBackdropAlphaKey = 'chat_backdrop_alpha';
+  static const _chatBackdropRadiusKey = 'chat_backdrop_radius';
   static const _secure = AppSecureStorage();
   late Future<void> _loaded;
 
@@ -226,6 +254,10 @@ class SettingsController extends Notifier<AppSettings> {
       visualReplies: prefs.getBool(_visualRepliesKey) ?? true,
       allowLandscape: prefs.getBool(_allowLandscapeKey) ?? true,
       glassOpacity: (prefs.getDouble(_glassOpacityKey) ?? 0).clamp(0.0, 1.0),
+      chatBackdrop: prefs.getBool(_chatBackdropKey) ?? false,
+      chatBackdropHue: (prefs.getDouble(_chatBackdropHueKey) ?? 250).clamp(0.0, 360.0),
+      chatBackdropAlpha: (prefs.getDouble(_chatBackdropAlphaKey) ?? 0.5).clamp(0.0, 1.0),
+      chatBackdropRadius: (prefs.getDouble(_chatBackdropRadiusKey) ?? 16).clamp(0.0, 28.0),
       customProviderIds: providerIds,
       loaded: true,
     );
@@ -330,6 +362,22 @@ class SettingsController extends Notifier<AppSettings> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_glassOpacityKey, v);
     state = state.copyWith(glassOpacity: v);
+  }
+
+  /// 聊天回答的背景框：开关、色相、不透明度、圆角。
+  Future<void> setChatBackdrop({bool? on, double? hue, double? alpha, double? radius}) async {
+    final next = state.copyWith(
+      chatBackdrop: on,
+      chatBackdropHue: hue?.clamp(0.0, 360.0),
+      chatBackdropAlpha: alpha?.clamp(0.0, 1.0),
+      chatBackdropRadius: radius?.clamp(0.0, 28.0),
+    );
+    state = next;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_chatBackdropKey, next.chatBackdrop);
+    await prefs.setDouble(_chatBackdropHueKey, next.chatBackdropHue);
+    await prefs.setDouble(_chatBackdropAlphaKey, next.chatBackdropAlpha);
+    await prefs.setDouble(_chatBackdropRadiusKey, next.chatBackdropRadius);
   }
 
   Future<void> setWebPhoneLayout(bool value) async {
