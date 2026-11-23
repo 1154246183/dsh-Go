@@ -8,10 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../companion/companion_voice_source.dart';
 import '../../../l10n/l10n.dart';
+import '../../../state/settings_state.dart';
 import '../../common/expand_reveal.dart';
 import '../../common/fluid_bits.dart';
 import '../../common/typing_indicator.dart';
 import '../../theme/app_icons.dart';
+import '../../theme/oklch.dart';
 import '../../theme/theme.dart';
 import '../dsh_ui/dsh_ui.dart';
 import '../../plugins/native/message_plugin_menu.dart';
@@ -185,6 +187,27 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
     final actions = widget.showActions && !streaming && text.isNotEmpty;
     // 「允许朗读」关掉时，操作行里不出现朗读键。
     final readAloud = ref.watch(companionVoiceSettingsProvider.select((s) => s?.on ?? false));
+    // 聊天背景框：壁纸透过来时给正文垫一层，颜色色相与不透明度由人调。
+    final backdrop = ref.watch(
+      settingsProvider.select(
+        (s) => (
+          on: s.chatBackdrop,
+          hue: s.chatBackdropHue,
+          alpha: s.chatBackdropAlpha,
+          radius: s.chatBackdropRadius,
+        ),
+      ),
+    );
+    final body = _textAfterThinking ? _FirstTextIn(child: _markdown(text, streaming)) : _markdown(text, streaming);
+    final framed = backdrop.on
+        ? ChatBackdropFrame(
+            hue: backdrop.hue,
+            alpha: backdrop.alpha,
+            radius: backdrop.radius,
+            streaming: streaming,
+            child: body,
+          )
+        : body;
     final reply = HoldLift(
       behavior: HitTestBehavior.opaque,
       // 长按选字，不弹菜单（菜单走下方「···」）。
@@ -201,8 +224,7 @@ class _AssistantMessageState extends ConsumerState<AssistantMessage> {
             ),
             if (text.isNotEmpty && !_textAfterThinking) const SizedBox(height: 8),
           ],
-          if (text.isNotEmpty)
-            _textAfterThinking ? _FirstTextIn(child: _markdown(text, streaming)) : _markdown(text, streaming),
+          if (text.isNotEmpty) framed,
           if (item.interrupted) const _InterruptedMark(),
           // 一轮结束时和输入条上的胶囊同一节奏展开:胶囊收回多少,这里长出
           // 多少,回答不会先被顶上去再落回来。打开对话时已结束的轮直接展开。
@@ -455,6 +477,52 @@ class _StallDotState extends State<_StallDot> with SingleTickerProviderStateMixi
               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 聊天回答外面的背景框：给正文垫一层自己选的底色。
+///
+/// 壁纸调亮以后正文容易和背景花纹打架，这一层把正文圈出来。色相走 OKLCH
+/// 的 h（跟配色系统同一套取色），不透明度单独调——想轻想重都行。流式输出
+/// 时淡一点（[streamingAlpha]），读完再到位，免得半句就被框住。
+class ChatBackdropFrame extends StatelessWidget {
+  const ChatBackdropFrame({
+    super.key,
+    required this.hue,
+    required this.alpha,
+    required this.radius,
+    required this.streaming,
+    required this.child,
+  });
+
+  final double hue;
+  final double alpha;
+  final double radius;
+  final bool streaming;
+  final Widget child;
+
+  /// 流式期间只用这个比例的不透明度。
+  static const streamingAlpha = 0.6;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // 深色底用偏暗的同色相，浅色底用偏亮的：都靠色相说话。
+    final tint = Oklch(dark ? 0.24 : 0.97, dark ? 0.05 : 0.03, hue).toColor();
+    final a = (alpha * (streaming ? streamingAlpha : 1)).clamp(0.0, 1.0);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tint.withValues(alpha: a),
+          borderRadius: BorderRadius.circular(radius),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: child,
         ),
       ),
     );
