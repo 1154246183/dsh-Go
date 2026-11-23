@@ -43,6 +43,7 @@ class AppSettings {
     this.foldCompletedTurns = true,
     this.visualReplies = true,
     this.allowLandscape = true,
+    this.glassOpacity = 0,
     this.customProviderIds = const {},
     this.loaded = false,
   });
@@ -98,6 +99,12 @@ class AppSettings {
   /// the device (or laying it flat) never rotates the chat under a thumb.
   final bool allowLandscape;
 
+  /// 卡片 / 气泡的玻璃再加多少不透明度，0–1（0 = 原样）。
+  ///
+  /// 壁纸调亮后，暗色下 card/pill 只有 white@5–6%，背景一透出来字就糊；
+  /// 这个值由「壁纸 › 卡片不透明度」调，越大字越稳、壁纸越不明显。
+  final double glassOpacity;
+
   /// Custom providers created on the local engine whose key is kept on the
   /// phone ([ProviderKeyVault]). Known at launch, before the engine runs, so
   /// the first-run gate can tell "has a model to talk to" without it.
@@ -123,6 +130,7 @@ class AppSettings {
     bool? foldCompletedTurns,
     bool? visualReplies,
     bool? allowLandscape,
+    double? glassOpacity,
     Set<String>? customProviderIds,
     bool? loaded,
   }) => AppSettings(
@@ -139,6 +147,7 @@ class AppSettings {
     foldCompletedTurns: foldCompletedTurns ?? this.foldCompletedTurns,
     visualReplies: visualReplies ?? this.visualReplies,
     allowLandscape: allowLandscape ?? this.allowLandscape,
+    glassOpacity: glassOpacity ?? this.glassOpacity,
     customProviderIds: customProviderIds ?? this.customProviderIds,
     loaded: loaded ?? this.loaded,
   );
@@ -167,6 +176,7 @@ class SettingsController extends Notifier<AppSettings> {
   static const _foldTurnsKey = 'fold_completed_turns';
   static const _visualRepliesKey = 'visual_replies';
   static const _allowLandscapeKey = 'allow_landscape';
+  static const _glassOpacityKey = 'glass_opacity';
   static const _secure = AppSecureStorage();
   late Future<void> _loaded;
 
@@ -215,6 +225,7 @@ class SettingsController extends Notifier<AppSettings> {
       foldCompletedTurns: prefs.getBool(_foldTurnsKey) ?? true,
       visualReplies: prefs.getBool(_visualRepliesKey) ?? true,
       allowLandscape: prefs.getBool(_allowLandscapeKey) ?? true,
+      glassOpacity: (prefs.getDouble(_glassOpacityKey) ?? 0).clamp(0.0, 1.0),
       customProviderIds: providerIds,
       loaded: true,
     );
@@ -311,6 +322,14 @@ class SettingsController extends Notifier<AppSettings> {
     await prefs.setBool(_allowLandscapeKey, value);
     state = state.copyWith(allowLandscape: value);
     await applyScreenOrientation(value);
+  }
+
+  /// 卡片 / 气泡的玻璃再加多少不透明度（0–1）。
+  Future<void> setGlassOpacity(double value) async {
+    final v = value.clamp(0.0, 1.0);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_glassOpacityKey, v);
+    state = state.copyWith(glassOpacity: v);
   }
 
   Future<void> setWebPhoneLayout(bool value) async {
