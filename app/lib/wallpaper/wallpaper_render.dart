@@ -339,6 +339,7 @@ class VeilRequest {
     required this.veilTop,
     required this.veilBottom,
     required this.user,
+    this.pop = 0,
     this.lift = 0,
     this.spread = WallpaperBake.spread,
   });
