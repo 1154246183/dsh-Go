@@ -56,6 +56,7 @@ import 'notification_settings.dart';
 import 'performance_page.dart';
 import 'personalization_page.dart';
 import 'privacy_page.dart';
+import 'read_aloud_settings_page.dart';
 import 'search/settings_search_page.dart';
 import 'settings_widgets.dart';
 import 'system_access_page.dart';
@@ -200,6 +201,12 @@ class SettingsScreen extends ConsumerWidget {
               tint: SettingsHues.abilities,
               spot: SettingsIndex.entry(SettingsPageId.githubBuild),
               onTap: () => _push(context, const GitHubBuildAccountsPage()),
+            ),
+            SettingsTile(
+              icon: AppIcons.readAloud,
+              tint: SettingsHues.abilities,
+              spot: SettingsIndex.entry(SettingsPageId.readAloud),
+              onTap: () => _push(context, const ReadAloudSettingsPage()),
             ),
           ],
         ),
