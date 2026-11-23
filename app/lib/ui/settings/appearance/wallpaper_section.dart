@@ -41,7 +41,7 @@ import '../../wallpaper/wallpaper_backdrop.dart';
 import '../../wallpaper/wallpaper_editor_page.dart';
 import '../../wallpaper/wallpaper_preview_page.dart';
 import '../settings_widgets.dart';
-import 'appearance_page.dart' show PickerGrid;
+import 'appearance_page.dart' show HueSlider, PickerGrid;
 import 'launch_screen_section.dart' show LaunchScreenPicker;
 
 /// The card's rows.
