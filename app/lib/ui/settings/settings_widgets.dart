@@ -189,6 +189,10 @@ class SettingsTile extends StatelessWidget {
                     children: [
                       Text(
                         title,
+                        // 标题不换行：value 里塞滑块这类爱撑满的东西时，
+                        // 标题宁可省略号也不要被压成一列并排的单字。
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: settingsTitleStyle(context)?.copyWith(color: danger ? colors.danger : scheme.onSurface),
                       ),
                       if (subtitle case final sub?) ...[
