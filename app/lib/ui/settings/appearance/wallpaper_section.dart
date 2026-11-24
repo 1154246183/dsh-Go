@@ -700,8 +700,13 @@ class ChatBackdropSection extends ConsumerWidget {
               SettingsTile(
                 key: const ValueKey('chat-backdrop-hue'),
                 title: '颜色',
+                // 色相条要一个有限的宽度：SettingsTile 把它直接放进 Row，
+                // 没有约束时 LayoutBuilder 拿到的 maxWidth 是整行剩余宽度，
+                // 它会全部吃掉，把「颜色」挤成竖排（一个字的宽度），
+                // 拖动区域跟着缩成一条竖缝，看着就是点不动。
                 value: SizedBox(
                   height: 36,
+                  width: 140,
                   child: HueSlider(
                     hue: settings.chatBackdropHue,
                     brightness: brightness,
@@ -738,6 +743,30 @@ class ChatBackdropSection extends ConsumerWidget {
 class WallpaperGallerySection extends ConsumerWidget {
   const WallpaperGallerySection({super.key});
 
+  /// 一次选多张，并且把结果说出来。
+  ///
+  /// 静默失败是这里最容易踩的坑：选择器没弹出来、图超过 15 MB、解码不了，
+  /// 用户看到的都只是「点了没反应」。所以失败一律给一句提示；取消不提示。
+  static Future<void> _addMany(BuildContext context, WidgetRef ref) async {
+    final l10n = context.l10n;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    LaunchImportProblem? problem;
+    try {
+      problem = await ref.read(wallpaperGalleryProvider.notifier).addMany();
+    } catch (_) {
+      problem = LaunchImportProblem.unreadable;
+    }
+    final text = switch (problem) {
+      null => l10n.wallpaperChanged,
+      LaunchImportProblem.cancelled => null,
+      LaunchImportProblem.unavailable => l10n.wallpaperUnavailable,
+      LaunchImportProblem.tooLarge || LaunchImportProblem.overLimit => l10n.wallpaperTooLarge,
+      LaunchImportProblem.unsupported => l10n.wallpaperUnsupported,
+      LaunchImportProblem.unreadable => l10n.wallpaperUnreadable,
+    };
+    if (text != null) messenger?.showBriefNotice(text);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final shots = ref.watch(wallpaperGalleryProvider).value ?? const <WallpaperShot>[];
@@ -753,7 +782,10 @@ class WallpaperGallerySection extends ConsumerWidget {
           icon: AppIcons.gallery,
           title: '添加多张',
           subtitle: shots.isEmpty ? '从相册一次选几张，之后可随机切换' : '已有 ${shots.length} 张',
-          onTap: () => unawaited(notifier.addMany()),
+          // 以前这里直接 unawaited(notifier.addMany())，返回的失败原因没人接：
+          // 相册打不开、图太大、格式不认识，全都是「点了没反应」。
+          // 单张那个入口一直有提示，这里照着补上。
+          onTap: () => unawaited(_addMany(context, ref)),
         ),
         SettingsSwitchTile(
           key: const ValueKey('wallpaper-random'),
