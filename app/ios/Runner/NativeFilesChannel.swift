@@ -23,10 +23,15 @@ private final class FileBudget {
 
   /// `own`: the app's own pick for its look, never a plugin's.
   init?(maxFiles: Int, maxBytes: Int, maxTotalBytes: Int, own: Bool) {
+    // 自己的选图（启动画面、壁纸）用 30 MB 单张预算，插件那边是 8 MB。
+    // 张数：插件的上限仍是 4；自己的要放开到 30——壁纸图库一次最多收 24 张
+    // （WallpaperGallery.maxShots），这里卡在 1 会让它整个构造失败，
+    // 界面只能报「无法打开相册」，看着像点不动。
     let fileLimit = own ? 30 * 1024 * 1024 : 8 * 1024 * 1024
-    let totalLimit = own ? fileLimit : 16 * 1024 * 1024
+    let totalLimit = own ? 30 * fileLimit : 16 * 1024 * 1024
+    let fileCap = own ? 30 : 4
     guard
-      maxFiles >= 1, maxFiles <= (own ? 1 : 4),
+      maxFiles >= 1, maxFiles <= fileCap,
       maxBytes >= 1, maxBytes <= fileLimit,
       maxTotalBytes >= 1, maxTotalBytes <= totalLimit
     else { return nil }
