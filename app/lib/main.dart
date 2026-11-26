@@ -10,6 +10,7 @@ import 'dev/frame_probe.dart';
 import 'diagnostics/app_error_log.dart';
 import 'launch/launch_state.dart';
 import 'launch/startup_trace.dart';
+import 'notify/notify_bootstrap.dart';
 import 'runtime/builtin_plugins.dart';
 import 'runtime/local_paths.dart';
 import 'state/locale_state.dart';
@@ -35,6 +36,11 @@ Future<void> _startApp() async {
   // 把随包内置的插件补进本机引擎 profile。引擎建 profile 可能要等几秒，
   // 所以这里不等它：注入在后台重试，失败也只写日志，不影响启动。
   unawaited(StartupTrace.step('builtin plugins', BuiltinPlugins.ensure));
+  // iOS：第一次启动把通知权限要到手，否则 设置 › 通知 里永远没有这个 App，
+  // 任务完成的通知也就发不出去。等第一帧之后再问，别挡住界面。
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(StartupTrace.step('notify permission', NotifyBootstrap.ensure));
+  });
   // MIT / OFL notices must ship with the APK, not just the sources.
   registerThirdPartyLicenses();
   registerFontLicenses();
