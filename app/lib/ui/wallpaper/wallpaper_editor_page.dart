@@ -107,6 +107,12 @@ class _WallpaperEditorPageState extends ConsumerState<WallpaperEditorPage> {
   }
 
   /// The framing the view shows now.
+  ///
+  /// 这里的 `room` 是「放大后图片比屏幕多出来的那部分」。1x 时图片刚好铺满，
+  /// 多出来的只有亚像素误差，于是 `room < 0.5` 成立——原来这一条直接返回 0，
+  /// 等于**没放大就拖动时，拖了也白拖**：位移被强制清零，存下去还是居中。
+  /// 现在只有 room 真的为 0（图片和屏幕一样大，拖必然是被夹住的）才给 0，
+  /// 否则按实际偏移换算；除数用一个极小的下限防止浮点溢出。
   (double, double, double) _framing(Size screen) {
     final m = _transform.value;
     final z = m.getMaxScaleOnAxis();
@@ -114,7 +120,9 @@ class _WallpaperEditorPageState extends ConsumerState<WallpaperEditorPage> {
     final left = -m.storage[12] / z;
     final top = -m.storage[13] / z;
     final spare = Size(child.width - screen.width / z, child.height - screen.height / z);
-    double align(double offset, double room) => room < 0.5 ? 0 : (offset / room * 2 - 1).clamp(-1.0, 1.0);
+    double align(double offset, double room) => room <= 0.01
+        ? 0
+        : (offset / room * 2 - 1).clamp(-1.0, 1.0);
     return (z, align(left, spare.width), align(top, spare.height));
   }
 
