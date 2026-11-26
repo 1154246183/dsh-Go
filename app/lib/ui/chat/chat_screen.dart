@@ -68,7 +68,7 @@ import '../shell/adaptive/adaptive_layout.dart' show WindowClass;
 import '../shell/drawer/folder_sheets.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
-import '../state/wallpaper_state.dart' show wallpaperGalleryProvider;
+import '../../state/wallpaper_state.dart' show wallpaperGalleryProvider;
 import '../wallpaper/wallpaper_backdrop.dart';
 import '../workspace/workspace_switcher.dart' show showWorkspaceSheet;
 import '../workspace/workspaces_page.dart';
