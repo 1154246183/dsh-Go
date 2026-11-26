@@ -131,13 +131,26 @@ class CustomWallpaper {
   CustomWallpaper withTone(Brightness brightness, double tone) =>
       brightness == Brightness.dark ? copyWith(dim: tone) : copyWith(lighten: tone);
 
-  /// A new picture in place of this one: how it sits starts over, the look is kept.
-  CustomWallpaper replacedBy({required String path, required int width, required int height, int? edge}) =>
+  /// A new picture in place of this one. 观感（亮度、模糊、圆角亮度）一律留着。
+  ///
+  /// 位置（zoom / alignX / alignY）默认也留着：轮换壁纸时如果把取景一起清掉，
+  /// 用户每换一张就得重新调一次位置，等于「调整位置」白调了。真要重新取景，
+  /// 传 [keepFraming] = false。
+  CustomWallpaper replacedBy({
+    required String path,
+    required int width,
+    required int height,
+    int? edge,
+    bool keepFraming = true,
+  }) =>
       CustomWallpaper(
         path: path,
         width: width,
         height: height,
         edge: edge,
+        zoom: keepFraming ? zoom : 1,
+        alignX: keepFraming ? alignX : 0,
+        alignY: keepFraming ? alignY : 0,
         blur: blur,
         lighten: lighten,
         dim: dim,
