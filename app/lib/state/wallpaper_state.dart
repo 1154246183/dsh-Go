@@ -2,6 +2,7 @@
 // the one in use, and the picture baked for the screen it's on.
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:ui' show Brightness;
@@ -44,13 +45,24 @@ class CustomWallpaperController extends AsyncNotifier<CustomWallpaper?> {
     return null;
   }
 
+  /// 最近一次确实读到/写过的那份。用来兜住 load() 偶发失败（iOS 容器路径
+  /// 解析、文件刚被系统挪动）：这种时候 state 是 null，若直接按「没有壁纸」
+  /// 新建一份，用户调好的缩放/位置就全被洗掉了。
+  CustomWallpaper? _known;
+
   /// The stored wallpaper, once it's read.
   Future<CustomWallpaper?> get _current async {
-    if (state.hasValue) return state.value;
+    if (state.hasValue) {
+      final v = state.value;
+      if (v != null) _known = v;
+      return v ?? _known;
+    }
     try {
-      return await future;
+      final v = await future;
+      if (v != null) _known = v;
+      return v ?? _known;
     } catch (_) {
-      return null;
+      return _known;
     }
   }
 
@@ -105,6 +117,7 @@ class CustomWallpaperController extends AsyncNotifier<CustomWallpaper?> {
   }
 
   Future<void> _store(CustomWallpaper wallpaper) async {
+    _known = wallpaper;
     state = AsyncData(wallpaper);
     await CustomWallpaper.save(wallpaper);
   }
@@ -130,48 +143,103 @@ final wallpaperImageProvider = FutureProvider.autoDispose.family<ui.Image?, Wall
   return image;
 });
 
-/// 壁纸图库：多张图 + 「随机显示」开关。
+/// 壁纸图库：多张图 + 轮换。
 ///
-/// 随机只在**冷启动**生效（[bootstrapShuffle]），不在切回前台时换——切出去
-/// 再回来换一张会打断阅读。切图只换 path 与尺寸，缩放 / 位置 / 模糊 /
-/// 亮度这些调好的观感留在 [CustomWallpaper] 上不动。
+/// 轮换有两种触发，都由 [rotateOn] 这一个开关管：
+///  - 进入会话页 / 设置页时换一张（[rotateOnEnter]）——换得勤，但只在页面
+///    刚进来时换，滚动阅读中不动；
+///  - 开着 App 时按 [interval] 定时换（[_syncTicker]），到点才换。
+///
+/// 切图只换 path 与尺寸；缩放 / 位置 / 模糊 / 亮度这些调好的观感留在
+/// [CustomWallpaper] 上不动（见 `replacedBy` 的 keepFraming）。
 class WallpaperGalleryController extends AsyncNotifier<List<WallpaperShot>> {
-  static const randomKey = 'wallpaper_random';
+  static const rotateKey = 'wallpaper_rotate';
+  static const intervalKey = 'wallpaper_rotate_secs';
+
+  /// 旧版本只有「随机显示」，升级时把它的值继承过来。
+  static const legacyRandomKey = 'wallpaper_random';
+
+  /// 可选间隔（秒）：15 秒 / 1 / 5 / 15 / 30 分钟 / 1 / 3 小时。
+  static const intervals = <int>[15, 60, 300, 900, 1800, 3600, 10800];
+  static const defaultInterval = 300;
+
+  Timer? _ticker;
 
   @override
   Future<List<WallpaperShot>> build() async {
     final shots = await WallpaperGallery.load();
-    await loadRandom();
-    // 冷启动时若是「随机显示」，就从图库里挑一张当当前壁纸。
-    unawaited(_shuffleIfRandom(shots));
+    await _loadPrefs();
+    ref.onDispose(() {
+      _ticker?.cancel();
+      _ticker = null;
+    });
+    // 冷启动先换一张：开着轮换就该每次打开看到不一样的。
+    unawaited(_shuffle());
+    _syncTicker();
     return shots;
   }
 
-  bool _random = false;
-  bool get random => _random;
+  bool _rotateOn = false;
+  bool get rotateOn => _rotateOn;
 
-  /// 读一次开关（App 起得比 prefs 快时由 UI 补调）。
-  Future<void> loadRandom() async {
+  int _interval = defaultInterval;
+  int get interval => _interval;
+
+  Future<void> _loadPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _random = prefs.getBool(randomKey) ?? false;
+      _rotateOn = prefs.getBool(rotateKey) ?? prefs.getBool(legacyRandomKey) ?? false;
+      final secs = prefs.getInt(intervalKey);
+      _interval = secs != null && intervals.contains(secs) ? secs : defaultInterval;
     } catch (_) {}
   }
 
-  Future<void> setRandom(bool on) async {
-    _random = on;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(randomKey, on);
-    } catch (_) {}
-    if (on) await _shuffleIfRandom(state.value ?? const <WallpaperShot>[]);
+  /// 由 [wallpaperRotateProvider] 推过来：开关或间隔变了，重建定时器。
+  /// 设置本身存在那个 provider 的 prefs 键里，这里只管「什么时候换」。
+  Future<void> applySettings({required bool on, required int interval}) async {
+    final wasOn = _rotateOn;
+    _rotateOn = on;
+    _interval = interval;
+    _syncTicker();
+    // 从关到开立刻换一张，别让用户等到第一个间隔。
+    if (!wasOn && on) await _shuffle();
   }
 
-  Future<void> _shuffleIfRandom(List<WallpaperShot> shots) async {
-    if (!_random || shots.length < 2) return;
-    final pick = shots[math.Random().nextInt(shots.length)];
+  /// 进入某个页面时调一次：开着轮换就换一张。
+  Future<void> rotateOnEnter() async {
+    if (!_rotateOn) return;
+    await _shuffle();
+  }
+
+  /// 开关或间隔一变就重建定时器。
+  void _syncTicker() {
+    _ticker?.cancel();
+    _ticker = null;
+    if (!_rotateOn) return;
+    final shots = state.value;
+    if (shots == null || shots.length < 2) return;
+    _ticker = Timer.periodic(Duration(seconds: _interval), (_) {
+      unawaited(_shuffle());
+    });
+  }
+
+
+  /// 随机挑一张**和当前不同的**换上去。
+  ///
+  /// 以前是「挑到同一张就 return」：图库只有两张时有一半概率什么都不发生，
+  /// 看着就像功能坏了。现在从「除当前那张以外」里挑。
+  Future<void> _shuffle() async {
+    final shots = state.value ?? const <WallpaperShot>[];
+    if (shots.length < 2) return;
     final current = await _current;
-    if (current == null || current.path == pick.path) return;
+    // 跳过当前那张，也跳过文件已经不在了的：换上去读不出来，画面就退回
+    // 默认底色，看着像「取景丢了」。
+    final pool = [
+      for (final s in shots)
+        if ((current == null || s.path != current.path) && File(s.path).existsSync()) s,
+    ];
+    if (pool.isEmpty) return;
+    final pick = pool[math.Random().nextInt(pool.length)];
     await ref
         .read(customWallpaperProvider.notifier)
         .adopt(pick.path, pick.width, pick.height, pick.edge);
@@ -198,6 +266,8 @@ class WallpaperGalleryController extends AsyncNotifier<List<WallpaperShot>> {
     // 第一张顺手设为当前壁纸，导完就能看到。
     final first = shots.first;
     await ref.read(customWallpaperProvider.notifier).adopt(first.path, first.width, first.height, first.edge);
+    // 够两张了，定时器该起来了。
+    _syncTicker();
     return problem;
   }
 
@@ -209,9 +279,99 @@ class WallpaperGalleryController extends AsyncNotifier<List<WallpaperShot>> {
     state = AsyncData(next);
     await WallpaperGallery.save(next);
     await WallpaperImport.removeFile(shot.path);
+    // 剩不到两张就不该再轮换了。
+    if (next.length < 2) {
+      _ticker?.cancel();
+      _ticker = null;
+    }
   }
 }
 
+/// 间隔的名字（设置页的下拉用）。
+String rotateIntervalLabel(int seconds, bool zh) => switch (seconds) {
+  15 => zh ? '15 秒' : '15 s',
+  60 => zh ? '1 分钟' : '1 min',
+  300 => zh ? '5 分钟' : '5 min',
+  900 => zh ? '15 分钟' : '15 min',
+  1800 => zh ? '30 分钟' : '30 min',
+  3600 => zh ? '1 小时' : '1 h',
+  10800 => zh ? '3 小时' : '3 h',
+  _ => '${seconds}s',
+};
+
 final wallpaperGalleryProvider = AsyncNotifierProvider<WallpaperGalleryController, List<WallpaperShot>>(
   WallpaperGalleryController.new,
+);
+
+/// 轮换设置（开关 + 间隔），界面直接 watch 它。
+///
+/// 单独一份状态，不塞进图库的 state：图库里每张 [WallpaperShot] 都有 ==，
+/// 内容没变时 Riverpod 判定状态相等，开关切了界面不会重画。
+class WallpaperRotateSettings {
+  const WallpaperRotateSettings({this.on = false, this.interval = WallpaperGalleryController.defaultInterval});
+
+  final bool on;
+  final int interval;
+
+  WallpaperRotateSettings copyWith({bool? on, int? interval}) =>
+      WallpaperRotateSettings(on: on ?? this.on, interval: interval ?? this.interval);
+
+  @override
+  bool operator ==(Object other) => other is WallpaperRotateSettings && other.on == on && other.interval == interval;
+
+  @override
+  int get hashCode => Object.hash(on, interval);
+}
+
+class WallpaperRotateController extends Notifier<WallpaperRotateSettings> {
+  @override
+  WallpaperRotateSettings build() {
+    unawaited(_load());
+    return const WallpaperRotateSettings();
+  }
+
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final on =
+          prefs.getBool(WallpaperGalleryController.rotateKey) ??
+          prefs.getBool(WallpaperGalleryController.legacyRandomKey) ??
+          false;
+      final secs = prefs.getInt(WallpaperGalleryController.intervalKey);
+      final interval = secs != null && WallpaperGalleryController.intervals.contains(secs)
+          ? secs
+          : WallpaperGalleryController.defaultInterval;
+      state = WallpaperRotateSettings(on: on, interval: interval);
+    } catch (_) {}
+  }
+
+  Future<void> setOn(bool on) async {
+    state = state.copyWith(on: on);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(WallpaperGalleryController.rotateKey, on);
+    } catch (_) {}
+    await _sync();
+  }
+
+  Future<void> setInterval(int seconds) async {
+    if (!WallpaperGalleryController.intervals.contains(seconds)) return;
+    state = state.copyWith(interval: seconds);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(WallpaperGalleryController.intervalKey, seconds);
+    } catch (_) {}
+    await _sync();
+  }
+
+  /// 把设置推给图库控制器，让它重建定时器。
+  Future<void> _sync() async {
+    final gallery = ref.read(wallpaperGalleryProvider.notifier);
+    await gallery.applySettings(on: state.on, interval: state.interval);
+    if (state.on) await gallery.rotateOnEnter();
+  }
+}
+
+final wallpaperRotateProvider = NotifierProvider<WallpaperRotateController, WallpaperRotateSettings>(
+  WallpaperRotateController.new,
 );
