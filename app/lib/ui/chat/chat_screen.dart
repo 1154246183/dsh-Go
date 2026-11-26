@@ -68,6 +68,7 @@ import '../shell/adaptive/adaptive_layout.dart' show WindowClass;
 import '../shell/drawer/folder_sheets.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
+import '../../state/wallpaper_state.dart' show wallpaperGalleryProvider;
 import '../wallpaper/wallpaper_backdrop.dart';
 import '../workspace/workspace_switcher.dart' show showWorkspaceSheet;
 import '../workspace/workspaces_page.dart';
@@ -264,6 +265,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_refreshPasteboardImage());
+    // 开着「自动轮换」时，进入会话页换一张壁纸。放在 addPostFrameCallback
+    // 里：initState 阶段还不能动 provider 的依赖，等这一帧画完再换。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(ref.read(wallpaperGalleryProvider.notifier).rotateOnEnter());
+    });
     _scheduleInteraction();
     ref.listenManual(currentSessionProvider, (_, _) => _scheduleInteraction());
     _voice = VoiceInputController(
