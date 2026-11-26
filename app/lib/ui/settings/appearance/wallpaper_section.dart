@@ -767,10 +767,41 @@ class WallpaperGallerySection extends ConsumerWidget {
     if (text != null) messenger?.showBriefNotice(text);
   }
 
+  /// 选轮换间隔：几个常用档位，点一下就定。
+  static Future<void> _pickInterval(BuildContext context, WidgetRef ref) async {
+    final rotateCtl = ref.read(wallpaperRotateProvider.notifier);
+    final current = ref.read(wallpaperRotateProvider).interval;
+    final chosen = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final secs in WallpaperGalleryController.intervals)
+              ListTile(
+                key: ValueKey('rotate-interval-$secs'),
+                title: Text(rotateIntervalLabel(secs, true)),
+                trailing: secs == current
+                    ? const Icon(Icons.check, size: 20)
+                    : null,
+                onTap: () => Navigator.of(context).pop(secs),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (chosen != null) await rotateCtl.setInterval(chosen);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final shots = ref.watch(wallpaperGalleryProvider).value ?? const <WallpaperShot>[];
     final notifier = ref.read(wallpaperGalleryProvider.notifier);
+    // 轮换开关与间隔在单独的 provider 里：图库那份 state 的元素有 ==，
+    // 内容不变时 Riverpod 不重画，开关会「点了没反应」。
+    final rotate = ref.watch(wallpaperRotateProvider);
+    final rotateCtl = ref.read(wallpaperRotateProvider.notifier);
     final current = ref.watch(customWallpaperProvider).value;
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -788,13 +819,20 @@ class WallpaperGallerySection extends ConsumerWidget {
           onTap: () => unawaited(_addMany(context, ref)),
         ),
         SettingsSwitchTile(
-          key: const ValueKey('wallpaper-random'),
+          key: const ValueKey('wallpaper-rotate'),
           icon: AppIcons.swap,
-          title: '随机显示',
-          subtitle: '每次打开 App 从这几张里随机挑一张',
-          value: notifier.random,
-          onChanged: shots.length < 2 ? null : (v) => unawaited(notifier.setRandom(v)),
+          title: '自动轮换',
+          subtitle: '进入会话页换一张，开 App 时也按间隔换',
+          value: rotate.on,
+          onChanged: shots.length < 2 ? null : (v) => unawaited(rotateCtl.setOn(v)),
         ),
+        if (rotate.on && shots.length > 1)
+          SettingsTile(
+            key: const ValueKey('wallpaper-rotate-interval'),
+            title: '轮换间隔',
+            value: Text(rotateIntervalLabel(rotate.interval, true)),
+            onTap: () => unawaited(_pickInterval(context, ref)),
+          ),
         if (shots.length > 1)
           Padding(
             padding: const EdgeInsets.fromLTRB(SettingsMetrics.inset, 8, SettingsMetrics.inset, 8),
