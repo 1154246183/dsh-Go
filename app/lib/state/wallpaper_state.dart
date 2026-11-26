@@ -2,6 +2,7 @@
 // the one in use, and the picture baked for the screen it's on.
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:ui' show Brightness;
@@ -44,13 +45,24 @@ class CustomWallpaperController extends AsyncNotifier<CustomWallpaper?> {
     return null;
   }
 
+  /// 最近一次确实读到/写过的那份。用来兜住 load() 偶发失败（iOS 容器路径
+  /// 解析、文件刚被系统挪动）：这种时候 state 是 null，若直接按「没有壁纸」
+  /// 新建一份，用户调好的缩放/位置就全被洗掉了。
+  CustomWallpaper? _known;
+
   /// The stored wallpaper, once it's read.
   Future<CustomWallpaper?> get _current async {
-    if (state.hasValue) return state.value;
+    if (state.hasValue) {
+      final v = state.value;
+      if (v != null) _known = v;
+      return v ?? _known;
+    }
     try {
-      return await future;
+      final v = await future;
+      if (v != null) _known = v;
+      return v ?? _known;
     } catch (_) {
-      return null;
+      return _known;
     }
   }
 
@@ -105,6 +117,7 @@ class CustomWallpaperController extends AsyncNotifier<CustomWallpaper?> {
   }
 
   Future<void> _store(CustomWallpaper wallpaper) async {
+    _known = wallpaper;
     state = AsyncData(wallpaper);
     await CustomWallpaper.save(wallpaper);
   }
@@ -219,9 +232,11 @@ class WallpaperGalleryController extends AsyncNotifier<List<WallpaperShot>> {
     final shots = state.value ?? const <WallpaperShot>[];
     if (shots.length < 2) return;
     final current = await _current;
+    // 跳过当前那张，也跳过文件已经不在了的：换上去读不出来，画面就退回
+    // 默认底色，看着像「取景丢了」。
     final pool = [
       for (final s in shots)
-        if (current == null || s.path != current.path) s,
+        if ((current == null || s.path != current.path) && File(s.path).existsSync()) s,
     ];
     if (pool.isEmpty) return;
     final pick = pool[math.Random().nextInt(pool.length)];
