@@ -80,7 +80,7 @@ class BuiltinPlugins {
       file.parent.createSync(recursive: true);
       final stamp = DateTime.now().toIso8601String();
       file.writeAsStringSync(
-        '[$stamp] ${lastResult}\n${steps.map((s) => '  - $s').join('\n')}\n',
+        '[$stamp] $lastResult\n${steps.map((s) => '  - $s').join('\n')}\n',
         mode: FileMode.append,
         flush: true,
       );
