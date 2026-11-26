@@ -71,10 +71,20 @@ class ContainerPaths {
     if (support == null) return null;
     final owned = '$support/$folder';
     try {
+      // 解析符号链接后的根用来做「是不是在自家目录里」的判断；但**不能**拿它
+      // 和拼出来的 `owned` 比字符串相等：iOS 上 App 容器是 /var/mobile/…，
+      // resolveSymbolicLinks 会给出 /private/var/mobile/…，两者永远不等。
+      // 原来那句 `root == owned` 因此在真机上恒为 false，_ownedFile 一律
+      // 返回 null，壁纸的 load() 就整份判为「不存在」——取景（缩放/位置）
+      // 全丢，换图后只能回到默认。
       final root = await Directory(owned).resolveSymbolicLinks();
       final file = await File(path).resolveSymbolicLinks();
-      return root == owned && file.startsWith('$owned/') && await File(file).exists() ? file : null;
+      // 用解析后的根做前缀比较，同样接受未解析的写法。
+      final inOwned = file == root || file.startsWith('$root/');
+      final inOwnedRaw = file.startsWith('$owned/');
+      return (inOwned || inOwnedRaw) && await File(file).exists() ? file : null;
     } on FileSystemException {
+      // 目录还没建（首次使用）或路径确实不存在：照旧当没有。
       return null;
     }
   }
