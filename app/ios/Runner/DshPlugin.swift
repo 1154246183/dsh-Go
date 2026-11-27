@@ -859,13 +859,16 @@ final class NotifyTaps: NSObject, UNUserNotificationCenterDelegate, FlutterStrea
   private var sink: FlutterEventSink?
   private var held: [[AnyHashable: Any]] = []
 
-  /// On screen, Dart shows its own banner.
+  /// On screen Dart already draws its own glass banner, so the system banner
+  /// would be a second copy — but returning nothing at all also threw the
+  /// sound and the notification-centre entry away, and a silent banner is easy
+  /// to miss. So: no system banner, keep the list entry and the sound.
   func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     willPresent notification: UNNotification,
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
-    completionHandler([])
+    completionHandler([.list, .sound])
   }
 
   func userNotificationCenter(
